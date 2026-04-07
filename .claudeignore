@@ -1,3 +1,10 @@
+dist/
+.idea/
+.gradle/
+build/
+**/build/
+*/build/
+.settings/
 # Gradle
 .gradle/
 build/
