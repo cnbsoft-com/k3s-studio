@@ -1,0 +1,38 @@
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    // 플러그인 로딩 시 필요한 liquibase-core를 여기에 반드시 추가해야 합니다.
+    classpath "org.liquibase:liquibase-core:4.27.0"
+  }
+}
+
+plugins {
+  id 'org.liquibase.gradle' version '2.2.0'
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  liquibaseRuntime "org.liquibase:liquibase-core:4.27.0"
+  liquibaseRuntime "org.postgresql:postgresql:42.7.3"
+  liquibaseRuntime 'info.picocli:picocli:4.7.7'
+  liquibaseRuntime 'javax.xml.bind:jaxb-api:2.3.1'
+}
+
+liquibase {
+  activities {
+    main {
+      searchPath 'src/main/resources'
+      changelogFile 'db/changelog/db.changelog-master.yaml'
+      url 'jdbc:postgresql://localhost:5433/mpk3s'
+      username 'mpk3s'
+      password 'mpk3s'
+      logLevel 'info'
+    }
+  }
+  runList = 'main'
+}

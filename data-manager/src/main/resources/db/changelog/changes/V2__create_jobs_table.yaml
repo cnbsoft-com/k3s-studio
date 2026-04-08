@@ -1,0 +1,53 @@
+databaseChangeLog:
+  - changeSet:
+      id: V2__create_jobs_table
+      author: mpk3s
+      changes:
+        - sql:
+            comment: Enable pgcrypto for gen_random_uuid()
+            sql: CREATE EXTENSION IF NOT EXISTS pgcrypto;
+        - createTable:
+            tableName: jobs
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: cluster_name
+                  type: VARCHAR(100)
+              - column:
+                  name: type
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: log
+                  type: TEXT
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+              - column:
+                  name: finished_at
+                  type: TIMESTAMPTZ
+        - createIndex:
+            tableName: jobs
+            indexName: idx_jobs_cluster_name
+            columns:
+              - column:
+                  name: cluster_name
+        - createIndex:
+            tableName: jobs
+            indexName: idx_jobs_status
+            columns:
+              - column:
+                  name: status
