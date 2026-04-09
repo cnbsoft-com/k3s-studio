@@ -1,0 +1,73 @@
+databaseChangeLog:
+  - changeSet:
+      id: V1__create_clusters_table
+      author: mpk3s
+      changes:
+        - createTable:
+            tableName: clusters
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: status
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: master_spec
+                  type: VARCHAR(50)
+              - column:
+                  name: master_cpus
+                  type: INT
+              - column:
+                  name: master_memory
+                  type: VARCHAR(10)
+              - column:
+                  name: master_disk
+                  type: VARCHAR(10)
+              - column:
+                  name: worker_count
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: ubuntu_image
+                  type: VARCHAR(100)
+              - column:
+                  name: options
+                  type: JSONB
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+        - sql:
+            comment: Create update_updated_at_column function
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION update_updated_at_column()
+              RETURNS TRIGGER AS $$
+              BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+              END;
+              $$ language 'plpgsql';
+        - sql:
+            comment: Add updated_at auto-update trigger for clusters
+            sql: |
+              CREATE TRIGGER update_clusters_updated_at
+                BEFORE UPDATE ON clusters
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column();

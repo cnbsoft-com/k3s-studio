@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/mpk3s}
+    username: ${DB_USERNAME:mpk3s}
+    password: ${DB_PASSWORD:mpk3s}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+
+server:
+  port: 9090
+
+logging:
+  level:
+    io.mpk3s: DEBUG
+
+multipass:
+  command: multipass
+  kubeconfig-dir: ${user.home}/.kube

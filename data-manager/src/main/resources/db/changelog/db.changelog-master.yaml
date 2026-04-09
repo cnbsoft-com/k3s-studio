@@ -1,0 +1,5 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/V1__create_clusters_table.yaml
+  - include:
+      file: db/changelog/changes/V2__create_jobs_table.yaml
