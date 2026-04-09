@@ -4,7 +4,7 @@ set -e
 # mpk3s - Single line installation script
 # This script downloads the mpk3s binary and installs it to /usr/local/bin
 
-REPO="cnbsoft-com/k3s-helper"
+REPO="cnbsoft-com/mpk3s"
 BINARY_URL="https://raw.githubusercontent.com/${REPO}/main/bin/mpk3s"
 INSTALL_PATH="/usr/local/bin/mpk3s"
 

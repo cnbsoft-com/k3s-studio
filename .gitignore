@@ -43,5 +43,5 @@ logs/
 *.swp
 temp/
 /node_modules
-web/frontend/node_modules/
+apps/mpk3s-ui/node_modules/
 .next/
