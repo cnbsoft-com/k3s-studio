@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -17,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <body className={inter.className}>
         <Providers>
           <div className="min-h-screen bg-background">
@@ -25,6 +26,9 @@ export default function RootLayout({
               <div className="container mx-auto px-4 py-3 flex items-center gap-3">
                 <span className="font-bold text-lg">mpk3s</span>
                 <span className="text-muted-foreground text-sm">K3s Cluster Manager</span>
+                <div className="ml-auto">
+                  <ThemeToggle />
+                </div>
               </div>
             </header>
             <main className="container mx-auto px-4 py-8">{children}</main>

@@ -6,6 +6,10 @@ Before reading files, always use qmd to search.
 
 Use Read/Glob only if qmd doesn't return enough.
 
+## Directory Aliases
+- `frontend` = `web/frontend`
+- `backend` = `web/backend`
+
 ## Token Optimization Rules
 1. Trust skills/memory - skip re-reading files
 2. No speculative tool calls
