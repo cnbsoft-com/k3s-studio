@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:17
     container_name: mpk3s-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: mpk3s
       POSTGRES_USER: mpk3s
