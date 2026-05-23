@@ -3,8 +3,8 @@
 # mpk3s Integrated Development Script 🦖
 
 PROJECT_ROOT=$(pwd)
-API_DIR="$PROJECT_ROOT/apps/mpk3s-api"
-UI_DIR="$PROJECT_ROOT/apps/mpk3s-ui"
+API_DIR="$PROJECT_ROOT/apps/k3s-studio-api"
+UI_DIR="$PROJECT_ROOT/apps/k3s-studio-ui"
 DB_COMPOSE="$PROJECT_ROOT/containers/docker-compose.yml"
 
 function show_usage() {
@@ -38,7 +38,7 @@ function stop_all() {
     echo "🛑 Stopping Database..."
     docker compose -f "$DB_COMPOSE" down
     echo "🛑 Stopping API & UI (if running in background)..."
-    pkill -f "mpk3s-api"
+    pkill -f "k3s-studio-api"
     pkill -f "next-server"
 }
 

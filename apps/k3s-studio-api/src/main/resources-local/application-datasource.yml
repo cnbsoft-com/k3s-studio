@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    driver-class-name: net.sf.log4jdbc.sql.jdbcapi.DriverSpy
+    url: ${DB_URL:jdbc:log4jdbc:postgresql://localhost:5433/mpk3s}
+    username: ${DB_USERNAME:mpk3s}
+    password: ${DB_PASSWORD:mpk3s}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false

@@ -8,8 +8,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
-public class Mpk3sApplication {
+public class K3sStudioApplication {
     public static void main(String[] args) {
-        SpringApplication.run(Mpk3sApplication.class, args);
+        SpringApplication.run(K3sStudioApplication.class, args);
     }
 }

@@ -1,9 +1,6 @@
 spring:
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5433/mpk3s}
-    username: ${DB_USERNAME:mpk3s}
-    password: ${DB_PASSWORD:mpk3s}
-    driver-class-name: org.postgresql.Driver
+  profiles:
+    active: datasource,logging
   jpa:
     hibernate:
       ddl-auto: update

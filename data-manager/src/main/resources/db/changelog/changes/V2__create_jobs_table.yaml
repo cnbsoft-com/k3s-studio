@@ -1,7 +1,7 @@
 databaseChangeLog:
   - changeSet:
       id: V2__create_jobs_table
-      author: mpk3s
+      author: k3s-studio
       changes:
         - sql:
             comment: Enable pgcrypto for gen_random_uuid()
