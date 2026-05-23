@@ -1,5 +1,7 @@
 package com.cnbsoft.mpk3s.server;
 
+import com.cnbsoft.mpk3s.cluster.ClusterService;
+import com.cnbsoft.mpk3s.cluster.DiscoveredCluster;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +17,7 @@ import java.util.UUID;
 public class ServerController {
 
     private final ServerService serverService;
+    private final ClusterService clusterService;
 
     @GetMapping
     public List<ServerResponse> listServers() {
@@ -56,5 +59,10 @@ public class ServerController {
     public ResponseEntity<Map<String, String>> installMultipass(@PathVariable Long id) {
         UUID jobId = serverService.installMultipass(id);
         return ResponseEntity.accepted().body(Map.of("jobId", jobId.toString()));
+    }
+
+    @GetMapping("/{id}/discover-clusters")
+    public List<DiscoveredCluster> discoverClusters(@PathVariable Long id) {
+        return clusterService.discoverClusters(id);
     }
 }

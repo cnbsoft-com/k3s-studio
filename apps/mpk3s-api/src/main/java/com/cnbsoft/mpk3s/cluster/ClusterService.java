@@ -14,7 +14,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -257,6 +259,77 @@ public class ClusterService {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
         return serviceFor(cluster).getKubeconfig(clusterName);
+    }
+
+    /**
+     * 서버의 Multipass에서 *-master 패턴 인스턴스를 찾아 미등록 클러스터 목록 반환.
+     * 이미 DB에 등록된 클러스터는 제외.
+     */
+    public List<DiscoveredCluster> discoverClusters(Long serverId) {
+        try {
+            MultipassService svc = serviceForServerId(serverId);
+            List<MultipassNode> nodes = svc.listNodes();
+
+            Set<String> masterNames = new HashSet<>();
+            for (MultipassNode n : nodes) {
+                if (n.getName().endsWith("-master")) {
+                    masterNames.add(n.getName().substring(0, n.getName().length() - 7));
+                }
+            }
+
+            return masterNames.stream()
+                    .filter(name -> !clusterRepository.existsByName(name))
+                    .map(name -> {
+                        int workers = (int) nodes.stream()
+                                .filter(n -> n.getName().matches(name + "-worker\\d+"))
+                                .count();
+                        String masterIp = nodes.stream()
+                                .filter(n -> n.getName().equals(name + "-master"))
+                                .findFirst()
+                                .map(MultipassNode::getIpv4)
+                                .orElse("");
+                        return new DiscoveredCluster(name, workers, masterIp);
+                    })
+                    .toList();
+        } catch (Exception e) {
+            log.warn("클러스터 감지 실패 (serverId={}): {}", serverId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 선택된 클러스터를 RUNNING 상태로 DB에 등록.
+     * 이미 존재하는 이름은 건너뜀.
+     */
+    @Transactional
+    public List<ClusterResponse> importClusters(Long serverId, List<DiscoveredCluster> clusters) {
+        return clusters.stream()
+                .filter(dc -> !clusterRepository.existsByName(dc.name()))
+                .map(dc -> {
+                    Cluster c = new Cluster();
+                    c.setName(dc.name());
+                    c.setServerId(serverId);
+                    c.setStatus(ClusterStatus.RUNNING);
+                    c.setWorkerCount(dc.workerCount());
+                    return ClusterResponse.from(clusterRepository.save(c));
+                })
+                .toList();
+    }
+
+    /**
+     * 로컬 서버 최초 등록 시 기존 Multipass 클러스터 자동 import.
+     * 실패해도 서버 시작을 막지 않음.
+     */
+    public void autoImportLocalClusters(Long serverId) {
+        try {
+            List<DiscoveredCluster> found = discoverClusters(serverId);
+            if (!found.isEmpty()) {
+                importClusters(serverId, found);
+                log.info("로컬 서버 초기화: {}개 클러스터 자동 등록됨", found.size());
+            }
+        } catch (Exception e) {
+            log.warn("로컬 클러스터 자동 감지 실패 (무시): {}", e.getMessage());
+        }
     }
 
     @Transactional

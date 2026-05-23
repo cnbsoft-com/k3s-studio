@@ -1,5 +1,6 @@
 package com.cnbsoft.mpk3s.server;
 
+import com.cnbsoft.mpk3s.cluster.ClusterService;
 import com.cnbsoft.mpk3s.config.EncryptionService;
 import com.cnbsoft.mpk3s.job.Job;
 import com.cnbsoft.mpk3s.job.JobService;
@@ -28,12 +29,14 @@ public class ServerService {
     private final JobService jobService;
     private final EncryptionService encryptionService;
     private final MultipassExecutorFactory executorFactory;
+    private final ClusterService clusterService;
 
-    /** 앱 시작 시 localhost 서버가 없으면 자동 생성 */
+    /** 앱 시작 시 localhost 서버가 없으면 자동 생성. 최초 생성 시 기존 클러스터 자동 감지 */
     @PostConstruct
     @Transactional
     public void initLocalServer() {
-        serverRepository.findByLocal(true).orElseGet(() -> {
+        boolean existed = serverRepository.findByLocal(true).isPresent();
+        if (!existed) {
             Server local = new Server();
             local.setName("local");
             local.setHost("localhost");
@@ -41,8 +44,9 @@ public class ServerService {
             local.setUsername("");
             local.setLocal(true);
             local.setStatus(ServerStatus.CONNECTED);
-            return serverRepository.save(local);
-        });
+            Server saved = serverRepository.save(local);
+            clusterService.autoImportLocalClusters(saved.getId());
+        }
     }
 
     public List<ServerResponse> listServers() {

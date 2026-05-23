@@ -4,13 +4,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  getServer, getClusters, checkMultipass, installMultipass, testServerConnection, deleteServer
+  getServer, getClusters, checkMultipass, installMultipass, testServerConnection, deleteServer,
+  discoverClusters, importClusters,
 } from "@/lib/api";
 import { ServerStatusBadge } from "@/components/server-status-badge";
 import { ClusterCard } from "@/components/cluster-card";
 import { JobLogViewer } from "@/components/job-log-viewer";
 import { toast } from "sonner";
-import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
 export default function ServerDetailPage() {
@@ -60,6 +61,24 @@ export default function ServerDetailPage() {
       router.push("/servers");
     },
     onError: () => toast.error("삭제 실패"),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const found = await discoverClusters(serverId);
+      if (found.length === 0) return 0;
+      await importClusters(serverId, found);
+      return found.length;
+    },
+    onSuccess: (count) => {
+      if (count === 0) {
+        toast.info("새로 감지된 클러스터가 없습니다.");
+      } else {
+        toast.success(`${count}개 클러스터가 동기화되었습니다.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["clusters", serverId] });
+    },
+    onError: () => toast.error("동기화 실패"),
   });
 
   if (installJobId) {
@@ -163,13 +182,25 @@ export default function ServerDetailPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">클러스터</h2>
-          <Link
-            href={`/clusters/new?serverId=${serverId}`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            새 클러스터
-          </Link>
+          <div className="flex gap-2">
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {syncMutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RotateCcw className="h-4 w-4" />}
+              Sync
+            </button>
+            <Link
+              href={`/clusters/new?serverId=${serverId}`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              새 클러스터
+            </Link>
+          </div>
         </div>
         {clusters.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">

@@ -108,13 +108,31 @@ public class MultipassService {
     }
 
     public String getMasterIp(String clusterName) throws IOException, InterruptedException {
-        MultipassNode master = getNode(clusterName + "-master");
-        return master.getIpv4();
+        try {
+            MultipassNode master = getNode(clusterName + "-master");
+            return master.getIpv4();
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                throw new IOException(
+                        "마스터 노드 '" + clusterName + "-master' 가 Multipass에 존재하지 않습니다. " +
+                        "인스턴스 상태를 확인하거나 클러스터를 재생성하세요.");
+            }
+            throw e;
+        }
     }
 
     public String getNodeToken(String clusterName) throws IOException, InterruptedException {
-        return executor.execMultipass("exec", clusterName + "-master", "--",
-                "sudo", "cat", "/var/lib/rancher/k3s/server/node-token");
+        try {
+            return executor.execMultipass("exec", clusterName + "-master", "--",
+                    "sudo", "cat", "/var/lib/rancher/k3s/server/node-token");
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                throw new IOException(
+                        "마스터 노드 '" + clusterName + "-master' 가 Multipass에 존재하지 않습니다. " +
+                        "인스턴스 상태를 확인하거나 클러스터를 재생성하세요.");
+            }
+            throw e;
+        }
     }
 
     public String getKubeconfig(String clusterName) throws IOException, InterruptedException {

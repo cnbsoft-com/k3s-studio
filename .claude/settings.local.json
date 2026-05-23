@@ -15,7 +15,8 @@
       "Bash(./gradlew compileJava)",
       "Bash(./gradlew compileJava --rerun-tasks)",
       "Bash(./gradlew classes:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(pnpm tsc *)"
     ]
   }
 }

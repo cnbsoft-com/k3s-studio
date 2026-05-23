@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { createServer, testServerConnection, checkMultipass, installMultipass } from "@/lib/api";
+import {
+  createServer, testServerConnection, checkMultipass, installMultipass,
+  discoverClusters, importClusters, DiscoveredCluster,
+} from "@/lib/api";
 import { SshKeyInput } from "@/components/ssh-key-input";
 import { JobLogViewer } from "@/components/job-log-viewer";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Loader2 } from "lucide-react";
 
-const STEPS = ["서버 정보", "SSH 인증", "Multipass 확인"];
+const STEPS = ["서버 정보", "SSH 인증", "Multipass 확인", "클러스터 감지"];
 
 interface FormState {
   name: string;
@@ -33,6 +36,10 @@ export default function NewServerPage() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [multipassResult, setMultipassResult] = useState<{ installed: boolean; version?: string } | null>(null);
   const [installJobId, setInstallJobId] = useState<string | null>(null);
+  const [discovered, setDiscovered] = useState<DiscoveredCluster[] | null>(null);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const set = (k: keyof FormState, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -53,7 +60,25 @@ export default function NewServerPage() {
 
   const checkMutation = useMutation({
     mutationFn: (id: number) => checkMultipass(id),
-    onSuccess: (res) => { setMultipassResult(res); setStep(2); },
+    onSuccess: (res) => {
+      setMultipassResult(res);
+      if (res.installed) {
+        setStep(2);
+      } else {
+        // Multipass 미설치 시 Step 2에서 완료 처리 (Step 3 skip)
+        setStep(2);
+      }
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: ({ id, clusters }: { id: number; clusters: DiscoveredCluster[] }) =>
+      importClusters(id, clusters),
+    onSuccess: () => {
+      toast.success("클러스터 등록 완료");
+      router.push(`/servers/${serverId}`);
+    },
+    onError: () => toast.error("클러스터 등록 실패"),
   });
 
   const installMutation = useMutation({
@@ -212,8 +237,110 @@ export default function NewServerPage() {
             <button onClick={() => setStep(1)} className={btnGhost}>
               <ChevronLeft className="h-4 w-4" /> 이전
             </button>
-            <button onClick={() => router.push(`/servers/${serverId}`)} className={btnPrimary}>
-              등록 완료
+            {multipassResult?.installed ? (
+              <button
+                onClick={async () => {
+                  if (!serverId) return;
+                  setStep(3);
+                  setDiscovering(true);
+                  setDiscoverError(false);
+                  try {
+                    const result = await discoverClusters(serverId);
+                    setDiscovered(result);
+                    setSelected(new Set(result.map((c) => c.name)));
+                  } catch {
+                    setDiscoverError(true);
+                  } finally {
+                    setDiscovering(false);
+                  }
+                }}
+                className={btnPrimary}
+              >
+                다음 <ChevronRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button onClick={() => router.push(`/servers/${serverId}`)} className={btnPrimary}>
+                등록 완료
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: 클러스터 감지 */}
+      {step === 3 && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            이 서버의 Multipass에서 기존 K3s 클러스터를 감지합니다.
+          </p>
+
+          {discovering && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              클러스터 감지 중...
+            </div>
+          )}
+
+          {discoverError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-4 text-sm text-red-800 dark:text-red-400">
+              감지 중 오류가 발생했습니다. 서버를 먼저 등록하고 나중에 다시 시도할 수 있습니다.
+            </div>
+          )}
+
+          {!discovering && !discoverError && discovered !== null && (
+            discovered.length === 0 ? (
+              <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+                감지된 기존 클러스터가 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{discovered.length}개 클러스터 감지됨</p>
+                <div className="rounded-lg border divide-y">
+                  {discovered.map((c) => (
+                    <label key={c.name} className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(c.name)}
+                        onChange={(e) => {
+                          const next = new Set(selected);
+                          if (e.target.checked) next.add(c.name);
+                          else next.delete(c.name);
+                          setSelected(next);
+                        }}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{c.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          master: {c.masterIp || "—"} · worker {c.workerCount}개
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+
+          <div className="flex justify-between pt-2">
+            <button onClick={() => setStep(2)} className={btnGhost}>
+              <ChevronLeft className="h-4 w-4" /> 이전
+            </button>
+            <button
+              onClick={() => {
+                if (!serverId) return;
+                const toImport = (discovered ?? []).filter((c) => selected.has(c.name));
+                if (toImport.length > 0) {
+                  importMutation.mutate({ id: serverId, clusters: toImport });
+                } else {
+                  router.push(`/servers/${serverId}`);
+                }
+              }}
+              disabled={importMutation.isPending}
+              className={btnPrimary}
+            >
+              {importMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {selected.size > 0 ? `${selected.size}개 등록 완료` : "등록 완료"}
             </button>
           </div>
         </div>

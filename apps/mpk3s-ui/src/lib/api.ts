@@ -39,6 +39,12 @@ export interface ConnectionTestResponse {
   message: string;
 }
 
+export interface DiscoveredCluster {
+  name: string;
+  workerCount: number;
+  masterIp: string;
+}
+
 // ── Cluster ────────────────────────────────────────────────────────────────
 
 export interface ClusterResponse {
@@ -118,6 +124,12 @@ export const checkMultipass = (id: number) =>
 
 export const installMultipass = (id: number) =>
   api.post<{ jobId: string }>(`/servers/${id}/multipass/install`).then((r) => r.data);
+
+export const discoverClusters = (id: number) =>
+  api.get<DiscoveredCluster[]>(`/servers/${id}/discover-clusters`).then((r) => r.data);
+
+export const importClusters = (serverId: number, clusters: DiscoveredCluster[]) =>
+  api.post<ClusterResponse[]>("/clusters/import", { serverId, clusters }).then((r) => r.data);
 
 // Clusters
 export const getClusters = (serverId?: number) =>

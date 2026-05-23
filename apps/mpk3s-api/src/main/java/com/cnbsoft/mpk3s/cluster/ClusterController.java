@@ -70,6 +70,11 @@ public class ClusterController {
         return ResponseEntity.accepted().body(Map.of("jobId", jobId.toString()));
     }
 
+    @PostMapping("/import")
+    public List<ClusterResponse> importClusters(@Valid @RequestBody ImportClustersRequest req) {
+        return clusterService.importClusters(req.getServerId(), req.getClusters());
+    }
+
     @GetMapping("/{name}/kubeconfig")
     public ResponseEntity<byte[]> getKubeconfig(@PathVariable String name) throws Exception {
         String content = clusterService.getKubeconfig(name);
