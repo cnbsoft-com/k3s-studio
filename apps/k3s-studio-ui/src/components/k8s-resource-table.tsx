@@ -13,12 +13,22 @@ interface K8sResourceTableProps {
   resourceType: ResourceType;
   data: K8sPodResponse[] | K8sServiceResponse[] | K8sDeploymentResponse[] | K8sConfigMapResponse[];
   loading?: boolean;
+  selectedKey?: string | null;
+  onSelect?: (namespace: string, name: string) => void;
 }
 
 const th = "px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
 const td = "px-3 py-2 text-sm whitespace-nowrap";
 
-export function K8sResourceTable({ resourceType, data, loading }: K8sResourceTableProps) {
+function rowCls(isSelected: boolean) {
+  return `cursor-pointer transition-colors ${
+    isSelected
+      ? "bg-primary/10 border-l-2 border-primary"
+      : "hover:bg-muted/30"
+  }`;
+}
+
+export function K8sResourceTable({ resourceType, data, loading, selectedKey, onSelect }: K8sResourceTableProps) {
   if (loading) return <div className="animate-pulse h-24 bg-muted rounded-lg" />;
   if (data.length === 0) return <p className="text-sm text-muted-foreground py-4">리소스가 없습니다.</p>;
 
@@ -38,22 +48,25 @@ export function K8sResourceTable({ resourceType, data, loading }: K8sResourceTab
             </tr>
           </thead>
           <tbody className="divide-y">
-            {pods.map((p) => (
-              <tr key={`${p.namespace}/${p.name}`} className="hover:bg-muted/30">
-                <td className={td}>{p.name}</td>
-                <td className={td}>{p.namespace}</td>
-                <td className={td}>
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    p.status === "Running" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                    : p.status === "Pending" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  }`}>{p.status}</span>
-                </td>
-                <td className={td}>{p.ready}</td>
-                <td className={td}>{p.age}</td>
-                <td className={`${td} text-muted-foreground`}>{p.hostIp || "-"}</td>
-              </tr>
-            ))}
+            {pods.map((p) => {
+              const key = `${p.namespace}/${p.name}`;
+              return (
+                <tr key={key} onClick={() => onSelect?.(p.namespace, p.name)} className={rowCls(selectedKey === key)}>
+                  <td className={td}>{p.name}</td>
+                  <td className={td}>{p.namespace}</td>
+                  <td className={td}>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      p.status === "Running" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : p.status === "Pending" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    }`}>{p.status}</span>
+                  </td>
+                  <td className={td}>{p.ready}</td>
+                  <td className={td}>{p.age}</td>
+                  <td className={`${td} text-muted-foreground`}>{p.hostIp || "-"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -76,16 +89,19 @@ export function K8sResourceTable({ resourceType, data, loading }: K8sResourceTab
             </tr>
           </thead>
           <tbody className="divide-y">
-            {services.map((s) => (
-              <tr key={`${s.namespace}/${s.name}`} className="hover:bg-muted/30">
-                <td className={td}>{s.name}</td>
-                <td className={td}>{s.namespace}</td>
-                <td className={td}>{s.type}</td>
-                <td className={`${td} font-mono text-xs`}>{s.clusterIp}</td>
-                <td className={td}>{s.ports}</td>
-                <td className={td}>{s.age}</td>
-              </tr>
-            ))}
+            {services.map((s) => {
+              const key = `${s.namespace}/${s.name}`;
+              return (
+                <tr key={key} onClick={() => onSelect?.(s.namespace, s.name)} className={rowCls(selectedKey === key)}>
+                  <td className={td}>{s.name}</td>
+                  <td className={td}>{s.namespace}</td>
+                  <td className={td}>{s.type}</td>
+                  <td className={`${td} font-mono text-xs`}>{s.clusterIp}</td>
+                  <td className={td}>{s.ports}</td>
+                  <td className={td}>{s.age}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -108,16 +124,19 @@ export function K8sResourceTable({ resourceType, data, loading }: K8sResourceTab
             </tr>
           </thead>
           <tbody className="divide-y">
-            {deployments.map((d) => (
-              <tr key={`${d.namespace}/${d.name}`} className="hover:bg-muted/30">
-                <td className={td}>{d.name}</td>
-                <td className={td}>{d.namespace}</td>
-                <td className={td}>{d.ready}</td>
-                <td className={td}>{d.upToDate}</td>
-                <td className={td}>{d.available}</td>
-                <td className={td}>{d.age}</td>
-              </tr>
-            ))}
+            {deployments.map((d) => {
+              const key = `${d.namespace}/${d.name}`;
+              return (
+                <tr key={key} onClick={() => onSelect?.(d.namespace, d.name)} className={rowCls(selectedKey === key)}>
+                  <td className={td}>{d.name}</td>
+                  <td className={td}>{d.namespace}</td>
+                  <td className={td}>{d.ready}</td>
+                  <td className={td}>{d.upToDate}</td>
+                  <td className={td}>{d.available}</td>
+                  <td className={td}>{d.age}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -138,14 +157,17 @@ export function K8sResourceTable({ resourceType, data, loading }: K8sResourceTab
           </tr>
         </thead>
         <tbody className="divide-y">
-          {configmaps.map((c) => (
-            <tr key={`${c.namespace}/${c.name}`} className="hover:bg-muted/30">
-              <td className={td}>{c.name}</td>
-              <td className={td}>{c.namespace}</td>
-              <td className={td}>{c.data}</td>
-              <td className={td}>{c.age}</td>
-            </tr>
-          ))}
+          {configmaps.map((c) => {
+            const key = `${c.namespace}/${c.name}`;
+            return (
+              <tr key={key} onClick={() => onSelect?.(c.namespace, c.name)} className={rowCls(selectedKey === key)}>
+                <td className={td}>{c.name}</td>
+                <td className={td}>{c.namespace}</td>
+                <td className={td}>{c.data}</td>
+                <td className={td}>{c.age}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

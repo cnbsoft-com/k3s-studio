@@ -48,6 +48,16 @@ public class K8sController {
         return k8sService.getConfigMaps(name, namespace);
     }
 
+    @GetMapping("/{type}/{namespace}/{resourceName}/manifest")
+    public Map<String, String> getManifest(
+            @PathVariable String name,
+            @PathVariable String type,
+            @PathVariable String namespace,
+            @PathVariable String resourceName) throws IOException {
+        String yaml = k8sService.getResourceManifest(name, type, namespace, resourceName);
+        return Map.of("yaml", yaml);
+    }
+
     @PostMapping("/apply")
     public ResponseEntity<Void> applyManifest(
             @PathVariable String name,

@@ -3,10 +3,12 @@ package com.cnbsoft.mpk3s.k8s;
 import com.cnbsoft.mpk3s.cluster.Cluster;
 import com.cnbsoft.mpk3s.cluster.ClusterNotFoundException;
 import com.cnbsoft.mpk3s.cluster.ClusterRepository;
+import com.cnbsoft.mpk3s.common.ResourceNotFoundException;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.utils.Serialization;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -16,7 +18,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -63,6 +67,56 @@ public class K8sService {
                 ? client.configMaps().inAnyNamespace().list().getItems()
                 : client.configMaps().inNamespace(namespace).list().getItems();
         return configMaps.stream().map(this::toConfigMapResponse).toList();
+    }
+
+    public String getResourceManifest(String clusterName, String resourceType,
+                                       String namespace, String resourceName) throws IOException {
+        if ("all".equals(namespace)) {
+            throw new IllegalArgumentException("namespace=all은 manifest 조회에 사용할 수 없습니다.");
+        }
+        KubernetesClient client = client(clusterName);
+        HasMetadata resource = switch (resourceType) {
+            case "pods"        -> client.pods().inNamespace(namespace).withName(resourceName).get();
+            case "services"    -> client.services().inNamespace(namespace).withName(resourceName).get();
+            case "deployments" -> client.apps().deployments().inNamespace(namespace).withName(resourceName).get();
+            case "configmaps"  -> client.configMaps().inNamespace(namespace).withName(resourceName).get();
+            default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
+        };
+        if (resource == null) {
+            throw new ResourceNotFoundException(resourceType + " not found: " + namespace + "/" + resourceName);
+        }
+        stripServerMetadata(resource);
+        return Serialization.asYaml(resource);
+    }
+
+    private void stripServerMetadata(HasMetadata resource) {
+        ObjectMeta meta = resource.getMetadata();
+        meta.setManagedFields(null);
+        meta.setResourceVersion(null);
+        meta.setUid(null);
+        meta.setCreationTimestamp(null);
+        meta.setGeneration(null);
+
+        if (resource instanceof Pod pod) {
+            pod.setStatus(null);
+        } else if (resource instanceof io.fabric8.kubernetes.api.model.Service svc) {
+            svc.setStatus(null);
+        } else if (resource instanceof Deployment d) {
+            d.setStatus(null);
+        } else if (resource instanceof ConfigMap cm) {
+            replaceBinaryData(cm);
+        }
+    }
+
+    private void replaceBinaryData(ConfigMap cm) {
+        if (cm.getBinaryData() == null || cm.getBinaryData().isEmpty()) return;
+        Map<String, String> data = cm.getData() != null ? new LinkedHashMap<>(cm.getData()) : new LinkedHashMap<>();
+        cm.getBinaryData().forEach((key, base64Val) -> {
+            int approxBytes = base64Val != null ? base64Val.length() * 3 / 4 : 0;
+            data.put(key, "<binary: ~" + approxBytes + " bytes>");
+        });
+        cm.setData(data);
+        cm.setBinaryData(null);
     }
 
     public void applyManifest(String clusterName, String yaml) throws IOException {

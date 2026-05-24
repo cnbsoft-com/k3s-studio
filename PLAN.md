@@ -1,247 +1,184 @@
-<!-- /autoplan restore point: /Users/dino/.gstack/projects/cnbsoft-com-mpk3s/feature-add-cluster-host-autoplan-restore-20260524-155050.md -->
-<!-- /autoplan restore point: /Users/dino/.gstack/projects/cnbsoft-com-k3s-studio/feature-add-cluster-host-autoplan-restore-20260524-142809.md -->
-# Plan: K3s-Studio k8s 리소스 관리
+<!-- /autoplan restore point: /Users/dino/.gstack/projects/cnbsoft-com-mpk3s/main-autoplan-restore-20260524-200341.md -->
+# Plan: K8s Object Manifest 조회 + DB 기반 Manifest 관리
 
-Branch: feature/add-cluster-host
-Task: 클러스터별 k8s 기본 리소스 조회 + manifest 등록/유지보수
+Branch: main
+Task: (1) k8s 리소스 선택 시 YAML manifest 출력, (2) DB로 manifest 저장/관리
 
 ---
 
 ## 배경
 
-K3s-Studio는 현재 Multipass VM 수준의 제어(start/stop/restart)와 클러스터 생성까지 지원한다.
-다음 단계는 VM 안에서 실행 중인 k3s(Kubernetes)를 직접 다루는 것:
-- namespace / service / pod / deployment / configmap 조회
-- YAML manifest 입력 → `kubectl apply` → 상태 확인
+현재 K3s-Studio는 k8s 리소스(pod/service/deployment/configmap)를 테이블로 조회하고, ManifestEditor에서 직접 YAML을 입력해 apply/delete할 수 있다.
+
+두 가지 기능이 추가로 필요하다:
+1. **Object 선택 → Manifest 표시**: 테이블 행을 클릭하면 해당 리소스의 현재 YAML을 조회해 보여준다. (kubectl get pod X -o yaml과 동일)
+2. **DB Manifest 관리**: 작성/사용한 manifest를 DB에 저장하고 목록에서 불러와 재사용한다.
 
 ---
 
 ## 현재 구조 요약
 
-- `MultipassExecutor.execMultipass(String... args)` — `multipass {args}` 실행
-- `multipass exec {nodeName} -- {cmd}` — VM 내부 명령 실행
-- `SshMultipassExecutor` — SSH 원격 서버에서 위 두 패턴 동일하게 실행
-- `MultipassService.saveKubeconfig(name, content)` — `~/.kube/config-{name}` 에 저장
-- kubeconfig 서버 URL = VM 내부 IP (외부에서 직접 접근 불가)
+- `K8sService` — fabric8 KubernetesClient로 5종 리소스 조회, manifest apply/delete
+- `K8sController` — GET /k8s/{type}?namespace=, POST /k8s/apply, POST /k8s/delete
+- `KubernetesClientFactory` — cluster별 KubernetesClient 캐싱 + SSH 터널
+- `K8sResourceTable` — 리소스 타입별 테이블 (행 클릭 기능 없음)
+- `ManifestEditor` — textarea + Apply/Delete 버튼 (stateless, DB 저장 없음)
 
 ---
 
-## 안 A: kubectl exec via Multipass exec (Minimal)
-
-### 아이디어
-
-기존 `MultipassExecutor.execMultipass("exec", masterNode, "--", "kubectl", ...)` 패턴 그대로.
-모든 k8s 조회/적용을 VM 내부 kubectl에 위임한다.
+## 기능 1: Object 선택 → Manifest YAML 조회
 
 ### 백엔드
 
 ```java
+// K8sController
+GET /api/clusters/{name}/k8s/pods/{namespace}/{resourceName}/manifest
+GET /api/clusters/{name}/k8s/services/{namespace}/{resourceName}/manifest
+GET /api/clusters/{name}/k8s/deployments/{namespace}/{resourceName}/manifest
+GET /api/clusters/{name}/k8s/configmaps/{namespace}/{resourceName}/manifest
+
 // K8sService
-public JsonNode getResources(String clusterName, String resource, String namespace)
-        throws IOException, InterruptedException {
-    String[] cmd = namespace.equals("all")
-        ? new String[]{"exec", clusterName+"-master", "--", "kubectl", "get", resource, "-A", "-o", "json"}
-        : new String[]{"exec", clusterName+"-master", "--", "kubectl", "get", resource, "-n", namespace, "-o", "json"};
-    String json = serviceFor(cluster).executor.execMultipass(cmd);
-    return objectMapper.readTree(json);
-}
-
-public void applyManifest(String clusterName, String yaml) throws IOException, InterruptedException {
-    // base64 인코딩으로 따옴표/개행 문제 회피
-    String encoded = Base64.getEncoder().encodeToString(yaml.getBytes(StandardCharsets.UTF_8));
-    serviceFor(cluster).executor.execMultipass(
-        "exec", clusterName+"-master", "--",
-        "bash", "-c", "echo " + encoded + " | base64 -d | kubectl apply -f -"
-    );
+public String getResourceManifest(String clusterName, String resourceType,
+                                   String namespace, String resourceName) throws IOException {
+    KubernetesClient client = client(clusterName);
+    HasMetadata resource = switch (resourceType) {
+        case "pods"        -> client.pods().inNamespace(namespace).withName(resourceName).get();
+        case "services"    -> client.services().inNamespace(namespace).withName(resourceName).get();
+        case "deployments" -> client.apps().deployments().inNamespace(namespace).withName(resourceName).get();
+        case "configmaps"  -> client.configMaps().inNamespace(namespace).withName(resourceName).get();
+        default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
+    };
+    if (resource == null) throw new IllegalArgumentException(resourceType + " not found: " + resourceName);
+    return Serialization.asYaml(resource);
 }
 ```
 
-API 엔드포인트:
-```
-GET  /api/clusters/{name}/k8s/namespaces
-GET  /api/clusters/{name}/k8s/pods?namespace={ns}
-GET  /api/clusters/{name}/k8s/services?namespace={ns}
-GET  /api/clusters/{name}/k8s/deployments?namespace={ns}
-POST /api/clusters/{name}/k8s/apply        (body: { yaml: string })
-POST /api/clusters/{name}/k8s/delete       (body: { yaml: string })
-```
+응답: `{ yaml: string }` (200), 없으면 400
 
-### 평가
+### 프론트엔드
 
-| 항목 | 내용 |
-|---|---|
-| 신규 의존성 | 없음 |
-| 로컬 + 원격 지원 | 완전 (SSH executor 동일 패턴) |
-| 속도 | 느림 (요청당 SSH 세션 + 프로세스 생성) |
-| 기능 풍부도 | kubectl CLI 수준 |
-| 구현 복잡도 | 낮음 |
-| 코드 추가량 | ~200줄 |
+- `K8sResourceTable` 행에 `onClick` 핸들러 추가
+- 클릭 시 선택 row 하이라이트 + `onSelect(resourceType, namespace, name)` 콜백
+- `page.tsx` 에서 선택된 리소스 state 관리 → GET manifest API 호출
+- 결과 YAML을 `ManifestEditor`의 textarea에 채워 넣음 (편집 후 Apply/Delete 가능)
+- 로딩 중 spinner, 에러 시 toast
 
 ---
 
-## 안 B: Kubernetes Java Client (fabric8)
+## 기능 2: DB Manifest 관리
 
-### 아이디어
+### 목표
 
-`io.fabric8:kubernetes-client` 라이브러리로 k8s API 서버에 직접 연결.
-저장된 kubeconfig (`~/.kube/config-{name}`) 파일로 클라이언트 생성.
-로컬 클러스터는 바로 연결. SSH 원격 클러스터는 SSH 포트 포워딩 터널을 자동 생성.
+사용자가 작성한 YAML manifest를 이름 붙여 저장하고, 나중에 목록에서 불러와 재사용한다.
+"나만의 kubectl apply 북마크" 개념.
 
-### 백엔드
+### DB 테이블
 
-```java
-// KubernetesClientFactory
-public KubernetesClient clientFor(Cluster cluster) {
-    Path kubeconfigPath = Path.of(kubeconfigDir, "config-" + cluster.getName());
-    Config config = Config.fromKubeconfig(Files.readString(kubeconfigPath));
-    if (!cluster.getServerLocal()) {
-        int localPort = tunnelManager.openTunnel(cluster.getId(), serverHost, 6443);
-        config = new ConfigBuilder(config)
-            .withMasterUrl("https://localhost:" + localPort)
-            .withTrustCerts(true)
-            .build();
-    }
-    return new KubernetesClientBuilder().withConfig(config).build();
-}
+```sql
+CREATE TABLE manifests (
+    id          BIGSERIAL PRIMARY KEY,
+    cluster_name VARCHAR(255),          -- null이면 범용(어느 클러스터에나 사용 가능)
+    name        VARCHAR(255) NOT NULL,  -- 사용자가 붙이는 이름 (예: "nginx-deployment")
+    description TEXT,
+    yaml_content TEXT NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
 ```
 
-```java
-// K8sService
-public List<PodResponse> getPods(String clusterName, String namespace) {
-    KubernetesClient client = clientFactory.clientFor(cluster);
-    PodList list = "all".equals(namespace)
-        ? client.pods().inAnyNamespace().list()
-        : client.pods().inNamespace(namespace).list();
-    return list.getItems().stream().map(PodResponse::from).toList();
-}
+### API
 
-public void applyManifest(String clusterName, String yaml) {
-    KubernetesClient client = clientFactory.clientFor(cluster);
-    client.load(new ByteArrayInputStream(yaml.getBytes())).serverSideApply();
-}
+```
+GET  /api/manifests?clusterName={name}   → 목록 (클러스터 + 범용 모두 반환)
+POST /api/manifests                      { clusterName?, name, description?, yaml }
+PUT  /api/manifests/{id}                 { name, description?, yaml }
+DELETE /api/manifests/{id}
 ```
 
-### 평가
+### 프론트엔드
 
-| 항목 | 내용 |
-|---|---|
-| 신규 의존성 | io.fabric8:kubernetes-client (~25MB) |
-| 로컬 지원 | 즉시 (kubeconfig 이미 저장됨) |
-| 원격 지원 | SSH 터널 구현 필요 (중간 복잡도) |
-| 속도 | 빠름 (HTTP/2 연결 풀링) |
-| 기능 풍부도 | WATCH/실시간 상태, 타입 안전 POJO |
-| 구현 복잡도 | 중간 |
-| 코드 추가량 | ~500줄 + 터널 관리 |
+- ManifestEditor 옆에 "저장" 버튼 추가 → 이름 입력 dialog
+- K8s 탭에 "저장된 Manifest" 드롭다운 / 목록 패널 추가
+- 선택 시 ManifestEditor에 YAML 채워 넣음 → Apply 가능
 
 ---
 
-## 안 C: kubectl 바이너리 on Spring Boot Host
+## 열린 질문 (해소됨)
 
-### 아이디어
-
-Spring Boot 실행 머신에 `kubectl` 설치.
-저장된 kubeconfig + `KUBECONFIG` 환경변수로 직접 ProcessBuilder 실행.
-로컬 클러스터는 kubeconfig의 서버 URL이 VM 내부 IP → Spring Boot 머신에서 Multipass 네트워크 경유로 직접 접근 가능.
-원격 클러스터는 kubeconfig 서버 URL을 SSH 포트 포워딩 주소로 패치.
-
-### 백엔드
-
-```java
-// K8sService
-public JsonNode getResources(Cluster cluster, String resource, String namespace) throws Exception {
-    String kubeconfigPath = resolveKubeconfig(cluster); // 원격이면 포트포워딩 패치
-    List<String> cmd = new ArrayList<>(Arrays.asList("kubectl", "get", resource, "-o", "json"));
-    if ("all".equals(namespace)) cmd.add("-A");
-    else { cmd.add("-n"); cmd.add(namespace); }
-    ProcessBuilder pb = new ProcessBuilder(cmd);
-    pb.environment().put("KUBECONFIG", kubeconfigPath);
-    Process proc = pb.start();
-    return objectMapper.readTree(proc.getInputStream());
-}
-
-public void applyManifest(Cluster cluster, String yaml) throws Exception {
-    String kubeconfigPath = resolveKubeconfig(cluster);
-    ProcessBuilder pb = new ProcessBuilder("kubectl", "apply", "-f", "-");
-    pb.environment().put("KUBECONFIG", kubeconfigPath);
-    Process proc = pb.start();
-    proc.getOutputStream().write(yaml.getBytes(StandardCharsets.UTF_8));
-    proc.getOutputStream().close();
-    proc.waitFor();
-}
-```
-
-### 평가
-
-| 항목 | 내용 |
-|---|---|
-| 신규 의존성 | kubectl 바이너리 (OS 패키지, 런타임 전제) |
-| 로컬 지원 | 즉시 (Multipass 브릿지 네트워크 경유) |
-| 원격 지원 | kubeconfig URL 패치 + SSH 포트 포워딩 |
-| 속도 | 중간 (로컬 프로세스, SSH 없음) |
-| 기능 풍부도 | kubectl CLI 수준 (dry-run, diff 등 무료) |
-| 구현 복잡도 | 중간 (kubeconfig 패치 로직) |
-| 코드 추가량 | ~300줄 |
+1. **기능 1 YAML 서버 메타데이터 제거** → 반드시 제거. managedFields/resourceVersion/uid/status/creationTimestamp 제거 후 반환. (CEO: CRITICAL)
+2. **범용(null cluster) manifest** → 제거. 모든 manifest는 반드시 cluster와 연결. (CEO: HIGH)
+3. **조회 → 저장 흐름** → 추가. 조회 YAML 패널에 "Template으로 저장" 버튼 추가. (CEO: HIGH)
+4. **DB 개념 모델** → **Template 라이브러리** 선택. 자주 쓰는 YAML을 이름 붙여 저장/재사용. (D1 결정)
+5. **조회 뷰 vs 편집 뷰 혼용** → 분리. 리소스 클릭 시 읽기전용 패널 표시, 편집기는 별도 유지.
+6. **manifest 이름 중복** → 불허. Template 개념에서 같은 이름은 같은 것.
+7. **apply 히스토리** → v2로 연기.
+8. **manifests.cluster_name FK** → `cluster_name VARCHAR` 유지 (P3: 기존 패턴 일치, cluster rename은 현실에서 없음). (Eng 자동결정)
+9. **T5 마이그레이션** → Flyway 없이 `spring.jpa.hibernate.ddl-auto: update`로 처리. (Eng 자동결정: P3)
+10. **manifest API namespace=all 금지** → `namespace=all` 요청 시 400 반환. (Eng 자동결정: P5)
+11. **404 처리** → `ResourceNotFoundException` 추가 → `@ControllerAdvice`에서 404 매핑. (Eng 자동결정: P1)
+12. **UNIQUE 제약** → `(cluster_name, name)` 복합 UNIQUE — 같은 클러스터 내 이름 중복 불허. (Eng 자동결정: P5)
+13. **k8s API 타임아웃** → `withRequestTimeout(Duration.ofSeconds(30))` 적용. (Eng 자동결정: P5)
+14. **ConfigMap binaryData** → binaryData 있으면 해당 필드만 `<binary: N bytes>` 로 치환 후 반환. (Eng 자동결정: P1)
 
 ---
 
-## 공통 프론트엔드 (안 무관)
-
-### 클러스터 상세 → K8s 탭
+## UI 레이아웃 (Design Review 확정)
 
 ```
-[클러스터 정보] [노드] [K8s ← 신규]
-```
-
-```
-Namespace: [all ▼]     리소스: [Pods] [Services] [Deployments] [ConfigMaps]
-
 ┌─────────────────────────────────────────────────────────┐
-│ NAME              NAMESPACE    STATUS   READY   AGE      │
-│ coredns-xxx       kube-system  Running  1/1     2d       │
-│ ...                                                      │
+│ [NS 셀렉터]  [Pods|Services|Deployments|ConfigMaps]     │
+├──────────────────────┬──────────────────────────────────┤
+│  리소스 테이블       │  읽기전용 YAML 패널               │
+│  (행 클릭 → 우측)   │  [초기: "행을 클릭하세요" 회색]  │
+│  선택행: primary/10 │  [로딩: skeleton]                 │
+│  border-l-2         │  [에러: 인라인 메시지+재시도]     │
+│                      │  [성공: max-h-96 overflow-auto]  │
+│                      │  [Template으로 저장] [편집기로↓] │
+├──────────────────────┴──────────────────────────────────┤
+│ Manifest 편집기                                          │
+│ [Template에서 불러오기 ▾ (name+description 2줄)]        │
+│ [textarea — controlled value/onChange]                  │
+│ [Apply] [Delete]  [현재 내용을 Template 저장]           │
 └─────────────────────────────────────────────────────────┘
-
-▶ Manifest 편집기
-┌──────────────────────────────────────────────────────────┐
-│ apiVersion: apps/v1                                      │
-│ kind: Deployment                                         │
-│ metadata:                                                │
-│   name: my-app                                           │
-└──────────────────────────────────────────────────────────┘
-[Apply]  [Delete]
 ```
 
-### 신규 컴포넌트
+- K8s 탭 활성 시 `max-w-6xl` (1152px), 비활성 시 `max-w-4xl`
+- 타입/NS 변경 시 선택 row + 읽기전용 패널 초기화
 
-- `K8sResourceTable` — 리소스 종류별 테이블
-- `ManifestEditor` — textarea (추후 CodeMirror 업그레이드 가능)
-- `NamespaceSelector` — GET /k8s/namespaces 결과로 채움
+### Template 저장 Dialog
 
-### api.ts 신규 함수
-
-```typescript
-export const getK8sNamespaces = (name: string) =>
-  api.get<string[]>(`/clusters/${name}/k8s/namespaces`).then(r => r.data);
-export const getK8sPods = (name: string, namespace: string) =>
-  api.get(`/clusters/${name}/k8s/pods`, { params: { namespace } }).then(r => r.data);
-export const getK8sServices = (name: string, namespace: string) =>
-  api.get(`/clusters/${name}/k8s/services`, { params: { namespace } }).then(r => r.data);
-export const getK8sDeployments = (name: string, namespace: string) =>
-  api.get(`/clusters/${name}/k8s/deployments`, { params: { namespace } }).then(r => r.data);
-export const applyManifest = (name: string, yaml: string) =>
-  api.post(`/clusters/${name}/k8s/apply`, { yaml });
-export const deleteManifest = (name: string, yaml: string) =>
-  api.post(`/clusters/${name}/k8s/delete`, { yaml });
-```
+- `name` input: 필수, max 100자, 중복 불허 → 409 시 인라인 에러 "이미 존재하는 이름입니다"
+- `description` textarea: 선택, max 200자
+- 삭제: 드롭다운 아이템 `×` 버튼 → confirm dialog
 
 ---
 
-## 열린 질문
+## 확정 구현 계획
 
-1. **원격 서버 접근**: 안 B/C 모두 SSH 포트 포워딩 필요. 안 A는 불필요. 원격 서버 클러스터를 v1에서 지원해야 하는가?
-2. **manifest 저장**: apply한 manifest를 DB에 저장해 목록/버전 관리를 해야 하는가? 아니면 stateless apply-only로?
-3. **리소스 범위**: namespace/pod/service/deployment/configmap 5종이면 충분한가?
-4. **실시간 상태**: Pod Running/Pending/Failed 상태 변화를 실시간으로 보여야 하는가? (안 A는 폴링만 가능)
+### 백엔드 태스크
+
+- [ ] **T1** `K8sService.getResourceManifest()` 구현 (fabric8 Serialization.asYaml)
+- [ ] **T2** `K8sController`에 manifest 조회 엔드포인트 4개 추가
+- [ ] **T3** `Manifest` 엔티티 + `ManifestRepository` (Spring Data JPA)
+- [ ] **T4** `ManifestService` + `ManifestController` CRUD
+- [ ] **T5** `Manifest` JPA Entity DDL로 테이블 자동 생성 (`ddl-auto: update`). `ResourceNotFoundException` + `@ControllerAdvice` 추가.
+
+### 프론트엔드 태스크
+
+- [ ] **T6** `K8sResourceTable` onSelect 콜백 + 행 클릭 → manifest 조회 연결
+- [ ] **T7** `api.ts` — manifest 조회 API 함수 + Manifest CRUD 타입/함수
+- [ ] **T8** `ManifestEditor` — 저장 버튼 + 저장된 manifest 로드 드롭다운
+- [ ] **T9** `page.tsx` — 선택 state 관리, manifest 조회 useQuery 연결
+
+### API 엔드포인트 (확정)
+
+```
+GET  /api/clusters/{name}/k8s/{type}/{namespace}/{resourceName}/manifest → { yaml: string }
+GET  /api/manifests?clusterName={name}
+POST /api/manifests                        { clusterName?, name, description?, yaml }
+PUT  /api/manifests/{id}                   { name, description?, yaml }
+DELETE /api/manifests/{id}
+```
 
 ---
 
@@ -249,58 +186,16 @@ export const deleteManifest = (name: string, yaml: string) =>
 
 | # | Phase | Decision | Classification | Principle | Rationale | Rejected |
 |---|-------|----------|----------------|-----------|-----------|---------|
-| 1 | CEO | 안 A 선택 (kubectl exec via multipass exec) | Mechanical | P3+P5 | 신규 의존성 없음, 원격 서버 SSH executor로 자동 지원, v1 요구사항 완전 충족 | 안 B(fabric8 over-engineering), 안 C(배포 의존성) |
-| 2 | CEO | manifest DB 저장 v1 제외 | Mechanical | P3 | stateless apply-only로 시작, 버전관리 필요성 검증 후 추가 | manifest 히스토리 테이블 |
-| 3 | CEO | 실시간 Watch v1 제외 | Mechanical | P3 | 30초 폴링으로 충분, 요구사항에 없음. 필요 시 K8sService 인터페이스 유지하며 fabric8 교체 가능 | SSE/WebSocket |
-| 4 | Eng | manifest 전달: base64 echo 파이프 | Mechanical | P5 | SshMultipassExecutor stdin 미지원, base64는 안전 문자 집합(주입 불가) | heredoc(구분자 충돌 위험) |
-| 5 | Eng | kubectl 에러 → HTTP 400 반환 | Mechanical | P1 | 사용자가 YAML 오류 내용 알아야 함. stderr 메시지 response body에 포함 | 500 일괄처리 |
-| 6 | Gate | **안 B 최종 선택** (user) | User Decision | — | 실시간 Watch, 타입 안전 POJO, 향후 로그 스트리밍/port-forward 확장 고려 | 안 A, 안 C |
-
----
-
-## 확정 구현 계획: 안 B (Kubernetes Java Client — fabric8)
-
-### Status: APPROVED
-
-### 핵심 설계 결정
-
-1. **로컬 클러스터**: kubeconfig(`~/.kube/config-{name}`) 직접 사용. Multipass 브릿지 네트워크(192.168.64.x)는 macOS 호스트에서 직접 라우팅됨.
-2. **원격 클러스터**: SSH 포트 포워딩 터널 자동 생성. k8s API 서버(6443) → localhost:{localPort}로 포워딩. kubeconfig masterUrl을 localhost:{localPort}로 교체.
-3. **manifest apply**: `client.load(yamlInputStream).serverSideApply()`
-4. **리소스 범위 v1**: namespace, pod, service, deployment, configmap (5종)
-5. **manifest 저장**: stateless (v1 미저장)
-
-### 백엔드 구현 태스크
-
-- [ ] **T1** `build.gradle.kts`에 `io.fabric8:kubernetes-client:7.x` 추가
-- [ ] **T2** `SshTunnelManager` 신규 클래스 — SSH 포트 포워딩 터널 생성/재사용/해제
-- [ ] **T3** `KubernetesClientFactory` 신규 클래스 — cluster별 KubernetesClient 생성 + 캐싱
-- [ ] **T4** `K8sService` 신규 클래스 — namespace/pod/service/deployment/configmap 조회, manifest apply/delete
-- [ ] **T5** `K8sController` 신규 클래스 — 6개 엔드포인트
-- [ ] **T6** `GlobalExceptionHandler`에 k8s 관련 예외 처리 추가
-
-### 프론트엔드 구현 태스크
-
-- [ ] **T7** `api.ts` — k8s 관련 타입 + 6개 API 함수
-- [ ] **T8** `K8sResourceTable` 컴포넌트 — 리소스별 테이블
-- [ ] **T9** `ManifestEditor` 컴포넌트 — textarea + Apply/Delete 버튼
-- [ ] **T10** `NamespaceSelector` 컴포넌트 — namespace 드롭다운
-- [ ] **T11** `clusters/[name]/page.tsx` — K8s 탭 추가
-
-### API 엔드포인트 (확정)
-
-```
-GET  /api/clusters/{name}/k8s/namespaces
-GET  /api/clusters/{name}/k8s/pods?namespace={ns}
-GET  /api/clusters/{name}/k8s/services?namespace={ns}
-GET  /api/clusters/{name}/k8s/deployments?namespace={ns}
-GET  /api/clusters/{name}/k8s/configmaps?namespace={ns}
-POST /api/clusters/{name}/k8s/apply   { yaml: string } → 204
-POST /api/clusters/{name}/k8s/delete  { yaml: string } → 204
-```
-
-### 열린 질문 (v1 기본값)
-
-- 원격 서버 SSH 터널 라이프사이클: 요청당 생성 vs 클러스터당 persistent → **persistent (클러스터당 1개, 클러스터 삭제 시 해제)**
-- kubeconfig 없는 클러스터 → 조회 시 `503 kubeconfig not available` 반환
-- 실시간 Watch: v2에서 SSE endpoint로 추가
+| 1 | CEO | 조회 YAML에서 managedFields/resourceVersion/uid/status 제거 | Mechanical | P1+P5 | Apply 시 409/field-manager 충돌 방지. 필수 수정. | 그대로 노출(Apply 오류) |
+| 2 | CEO | 범용(null cluster) manifest 제거 | Mechanical | P5 | cluster 없는 manifest는 drift 위험. 명시적 연결 필수. | 범용 허용 |
+| 3 | CEO | 조회 → "Template으로 저장" 버튼 추가 | Mechanical | P1 | 조회-저장 흐름이 없으면 두 기능이 단절됨. | 수동 복붙 |
+| 4 | CEO | DB 유지 (파일시스템 방식 기각) | Mechanical | P3 | 이미 JPA/PostgreSQL 인프라 존재. 재발명 불필요. | 로컬 파일시스템 |
+| 5 | CEO | 조회 패널 읽기전용 분리, 편집기 별도 유지 | Mechanical | P5 | 동일 textarea 혼용 시 "현재 상태"와 "적용할 것" 혼동 | 단일 textarea |
+| 6 | D1 | DB 개념 모델: Template 라이브러리 | Taste (User) | — | 사용자 선택. 단순하고 즉시 유용. Lens 대비 차별점 약하나 v1 완성 가능 | Recipe(복잡), Snapshot(중간복잡) |
+| 7 | Eng | manifests.cluster_name: VARCHAR 유지 | Mechanical | P3 | cluster rename은 현실적으로 없음. 기존 API 패턴(clusterName param)과 일치. | cluster_id FK(JOIN 필요, 구현 복잡) |
+| 8 | Eng | T5: ddl-auto:update 유지, Flyway 미도입 | Mechanical | P3 | 기존 인프라 활용, scope 최소화. 테이블 1개로 Flyway 도입은 과도. | Flyway baseline 도입 |
+| 9 | Eng | namespace=all → 400 (manifest API) | Mechanical | P5 | manifest는 단일 리소스 조회. all은 의미 없음. 명시적 거부가 안전. | 허용(첫 번째 NS 사용) |
+| 10 | Eng | ResourceNotFoundException → 404 | Mechanical | P1 | IllegalArgumentException → 400은 not-found와 의미 혼동. | 기존 400 유지 |
+| 11 | Eng | UNIQUE(cluster_name, name) | Mechanical | P5 | Template명 중복 불허(CEO 결정 6번). DB 제약으로 강제. | 앱 레벨 검증만 |
+| 12 | Eng | k8s API 30초 타임아웃 | Mechanical | P5 | SSH 터널 + k8s 지연 가능. 무한 대기 방지. | 타임아웃 없음 |
+| 13 | Eng | ConfigMap binaryData → placeholder 치환 | Mechanical | P1 | 바이너리를 YAML에 포함하면 크기/인코딩 문제. 읽기전용 패널이므로 placeholder 충분. | 바이너리 포함(크기 문제) |

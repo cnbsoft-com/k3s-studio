@@ -9,6 +9,8 @@ import {
   startCluster, stopCluster, restartCluster, suspendCluster,
   getK8sNamespaces, getK8sPods, getK8sServices, getK8sDeployments, getK8sConfigMaps,
   applyManifest, deleteManifest,
+  getK8sResourceManifest,
+  getManifestTemplates, createManifestTemplate,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { NodeTable } from "@/components/node-table";
@@ -20,6 +22,9 @@ import { ManifestEditor } from "@/components/manifest-editor";
 import { toast } from "sonner";
 import { Trash2, Plus, Shield, Download, Play, Square, RotateCcw, PauseCircle } from "lucide-react";
 
+type ResourceType = "pods" | "services" | "deployments" | "configmaps";
+interface SelectedResource { type: ResourceType; namespace: string; name: string }
+
 export default function ClusterDetailPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const router = useRouter();
@@ -29,7 +34,13 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   const [pendingNodes, setPendingNodes] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"nodes" | "k8s">("nodes");
   const [k8sNamespace, setK8sNamespace] = useState("all");
-  const [k8sResource, setK8sResource] = useState<"pods" | "services" | "deployments" | "configmaps">("pods");
+  const [k8sResource, setK8sResource] = useState<ResourceType>("pods");
+  const [selectedResource, setSelectedResource] = useState<SelectedResource | null>(null);
+  const [manifestYaml, setManifestYaml] = useState("");
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [yamlToSave, setYamlToSave] = useState("");
+  const [saveName, setSaveName] = useState("");
+  const [saveDesc, setSaveDesc] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
   const [showAddWorker, setShowAddWorker] = useState(false);
@@ -51,39 +62,25 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteCluster(name),
-    onSuccess: (res) => {
-      setShowDeleteDialog(false);
-      setActiveJobId(res.jobId);
-    },
+    onSuccess: (res) => { setShowDeleteDialog(false); setActiveJobId(res.jobId); },
     onError: () => toast.error("삭제 요청 실패"),
   });
 
   const addWorkerMutation = useMutation({
     mutationFn: () => addWorkers(name, { workerSpec, workerCount }),
-    onSuccess: (res) => {
-      setShowAddWorker(false);
-      setActiveJobId(res.jobId);
-      toast.success("워커 추가가 시작되었습니다.");
-    },
+    onSuccess: (res) => { setShowAddWorker(false); setActiveJobId(res.jobId); toast.success("워커 추가가 시작되었습니다."); },
     onError: () => toast.error("워커 추가 요청 실패"),
   });
 
   const deleteWorkerMutation = useMutation({
     mutationFn: (workerName: string) => deleteWorker(name, workerName),
-    onSuccess: (res) => {
-      setActiveJobId(res.jobId);
-      toast.success("워커 삭제가 시작되었습니다.");
-    },
+    onSuccess: (res) => { setActiveJobId(res.jobId); toast.success("워커 삭제가 시작되었습니다."); },
     onError: () => toast.error("워커 삭제 요청 실패"),
   });
 
   const tlsMutation = useMutation({
     mutationFn: () => addTls(name, tlsDomain),
-    onSuccess: (res) => {
-      setShowTls(false);
-      setActiveJobId(res.jobId);
-      toast.success("TLS 설정이 시작되었습니다.");
-    },
+    onSuccess: (res) => { setShowTls(false); setActiveJobId(res.jobId); toast.success("TLS 설정이 시작되었습니다."); },
     onError: () => toast.error("TLS 설정 요청 실패"),
   });
 
@@ -172,6 +169,23 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     staleTime: 15_000,
   });
 
+  const {
+    data: readonlyYaml,
+    isLoading: manifestLoading,
+    isError: manifestError,
+    refetch: refetchManifest,
+  } = useQuery({
+    queryKey: ["k8s-manifest", name, selectedResource?.type, selectedResource?.namespace, selectedResource?.name],
+    queryFn: () => getK8sResourceManifest(
+      name,
+      selectedResource!.type,
+      selectedResource!.namespace,
+      selectedResource!.name
+    ),
+    enabled: selectedResource !== null,
+    staleTime: 0,
+  });
+
   const applyMutation = useMutation({
     mutationFn: (yaml: string) => applyManifest(name, yaml),
     onSuccess: () => toast.success("Manifest 적용 완료"),
@@ -182,6 +196,24 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     mutationFn: (yaml: string) => deleteManifest(name, yaml),
     onSuccess: () => toast.success("Manifest 삭제 완료"),
     onError: (e: Error) => toast.error("삭제 실패: " + e.message),
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: () => createManifestTemplate({ clusterName: name, name: saveName, description: saveDesc || undefined, yamlContent: yamlToSave }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["manifest-templates", name] });
+      setShowSaveDialog(false);
+      setSaveName("");
+      setSaveDesc("");
+      toast.success("Template 저장 완료");
+    },
+    onError: (e: { response?: { status: number } } & Error) => {
+      if (e.response?.status === 409) {
+        toast.error("이미 존재하는 이름입니다");
+      } else {
+        toast.error("저장 실패: " + e.message);
+      }
+    },
   });
 
   const k8sData =
@@ -196,13 +228,31 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     k8sResource === "deployments" ? deploymentsLoading :
     configMapsLoading;
 
+  const selectedKey = selectedResource
+    ? `${selectedResource.namespace}/${selectedResource.name}`
+    : null;
+
+  const handleResourceSelect = (namespace: string, resourceName: string) => {
+    setSelectedResource({ type: k8sResource, namespace, name: resourceName });
+  };
+
+  const handleTypeOrNsChange = () => {
+    setSelectedResource(null);
+  };
+
+  const openSaveDialog = (yaml: string) => {
+    setYamlToSave(yaml);
+    setSaveName("");
+    setSaveDesc("");
+    setShowSaveDialog(true);
+  };
+
   const handleJobDone = (success: boolean) => {
     setActiveJobId(null);
     queryClient.invalidateQueries({ queryKey: ["clusters"] });
     queryClient.invalidateQueries({ queryKey: ["cluster", name] });
     queryClient.invalidateQueries({ queryKey: ["nodes", name] });
     if (!success) return;
-    // 삭제 완료 시 홈으로
     if (!cluster || cluster.status === "DELETING") router.push("/");
   };
 
@@ -210,7 +260,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   if (!cluster) return <p className="text-muted-foreground">클러스터를 찾을 수 없습니다.</p>;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className={`space-y-6 ${activeTab === "k8s" ? "max-w-6xl" : "max-w-4xl"}`}>
       <div className="space-y-2">
         <Breadcrumb items={[{ label: "대시보드", href: "/" }, { label: cluster.name }]} />
         <div className="flex items-center gap-3">
@@ -288,17 +338,18 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
       {/* K8s 탭 */}
       {activeTab === "k8s" && (
         <div className="space-y-4">
+          {/* NS 셀렉터 + 리소스 타입 토글 */}
           <div className="flex flex-wrap items-center gap-3">
             <NamespaceSelector
               namespaces={k8sNamespaces}
               value={k8sNamespace}
-              onChange={setK8sNamespace}
+              onChange={(ns) => { setK8sNamespace(ns); handleTypeOrNsChange(); }}
             />
             <div className="flex rounded-lg border overflow-hidden">
               {(["pods", "services", "deployments", "configmaps"] as const).map((r) => (
                 <button
                   key={r}
-                  onClick={() => setK8sResource(r)}
+                  onClick={() => { setK8sResource(r); handleTypeOrNsChange(); }}
                   className={`px-3 py-1.5 text-sm capitalize ${
                     k8sResource === r ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                   }`}
@@ -308,12 +359,80 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               ))}
             </div>
           </div>
-          <K8sResourceTable resourceType={k8sResource} data={k8sData} loading={k8sLoading} />
+
+          {/* Split-pane: 테이블 | 읽기전용 YAML 패널 */}
+          <div className="grid grid-cols-2 gap-4 items-start">
+            {/* 왼쪽: 리소스 테이블 */}
+            <div className="min-w-0">
+              <K8sResourceTable
+                resourceType={k8sResource}
+                data={k8sData}
+                loading={k8sLoading}
+                selectedKey={selectedKey}
+                onSelect={handleResourceSelect}
+              />
+            </div>
+
+            {/* 오른쪽: 읽기전용 YAML 패널 */}
+            <div className="rounded-lg border p-3 min-h-[160px]">
+              {!selectedResource && (
+                <p className="text-sm text-muted-foreground text-center mt-8">
+                  테이블에서 리소스를 클릭하세요
+                </p>
+              )}
+              {selectedResource && manifestLoading && (
+                <div className="space-y-2">
+                  <div className="animate-pulse h-4 bg-muted rounded w-3/4" />
+                  <div className="animate-pulse h-4 bg-muted rounded w-1/2" />
+                  <div className="animate-pulse h-4 bg-muted rounded w-5/6" />
+                  <div className="animate-pulse h-4 bg-muted rounded w-2/3" />
+                </div>
+              )}
+              {selectedResource && !manifestLoading && manifestError && (
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive">manifest 조회 실패</p>
+                  <button
+                    onClick={() => refetchManifest()}
+                    className="text-xs rounded border px-2 py-1 hover:bg-muted"
+                  >
+                    재시도
+                  </button>
+                </div>
+              )}
+              {selectedResource && !manifestLoading && !manifestError && readonlyYaml && (
+                <div className="space-y-2">
+                  <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre bg-muted/30 rounded p-2">
+                    {readonlyYaml}
+                  </pre>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => openSaveDialog(readonlyYaml)}
+                      className="rounded border px-3 py-1 text-xs hover:bg-muted"
+                    >
+                      Template으로 저장
+                    </button>
+                    <button
+                      onClick={() => setManifestYaml(readonlyYaml)}
+                      className="rounded border px-3 py-1 text-xs hover:bg-muted"
+                    >
+                      편집기로 ↓
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Manifest 편집기 */}
           <div className="space-y-2 pt-2">
             <h3 className="text-sm font-medium">Manifest 편집기</h3>
             <ManifestEditor
+              value={manifestYaml}
+              onChange={setManifestYaml}
+              clusterName={name}
               onApply={(yaml) => applyMutation.mutate(yaml)}
               onDelete={(yaml) => deleteManiMutation.mutate(yaml)}
+              onSaveTemplate={() => openSaveDialog(manifestYaml)}
               applyPending={applyMutation.isPending}
               deletePending={deleteManiMutation.isPending}
             />
@@ -324,28 +443,20 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
       {/* Actions */}
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => startClusterMutation.mutate()}
-            disabled={isClusterPending}
+          <button onClick={() => startClusterMutation.mutate()} disabled={isClusterPending}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
             <Play className="h-4 w-4" /> 클러스터 시작
           </button>
-          <button
-            onClick={() => stopClusterMutation.mutate()}
-            disabled={isClusterPending}
+          <button onClick={() => stopClusterMutation.mutate()} disabled={isClusterPending}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
             <Square className="h-4 w-4" /> 클러스터 중지
           </button>
-          <button
-            onClick={() => restartClusterMutation.mutate()}
-            disabled={isClusterPending}
+          <button onClick={() => restartClusterMutation.mutate()} disabled={isClusterPending}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
             <RotateCcw className="h-4 w-4" /> 클러스터 재시작
           </button>
           {cluster.serverLocal && (
-            <button
-              onClick={() => suspendClusterMutation.mutate()}
-              disabled={isClusterPending}
+            <button onClick={() => suspendClusterMutation.mutate()} disabled={isClusterPending}
               className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
               <PauseCircle className="h-4 w-4" /> 클러스터 일시정지
             </button>
@@ -366,6 +477,43 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
           </button>
         </div>
       </div>
+
+      {/* Template 저장 다이얼로그 */}
+      {showSaveDialog && (
+        <Dialog title="Template 저장" onClose={() => setShowSaveDialog(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                이름 <span className="text-destructive">*</span>
+              </label>
+              <input
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                maxLength={100}
+                placeholder="nginx-deployment"
+                className="w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">설명 (선택)</label>
+              <textarea
+                value={saveDesc}
+                onChange={(e) => setSaveDesc(e.target.value)}
+                maxLength={200}
+                rows={2}
+                className="w-full rounded-md border px-3 py-2 text-sm resize-none"
+              />
+            </div>
+            <button
+              onClick={() => saveTemplateMutation.mutate()}
+              disabled={!saveName.trim() || saveTemplateMutation.isPending}
+              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
+            >
+              {saveTemplateMutation.isPending ? "저장 중..." : "저장"}
+            </button>
+          </div>
+        </Dialog>
+      )}
 
       {/* 워커 추가 다이얼로그 */}
       {showAddWorker && (

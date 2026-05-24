@@ -239,6 +239,49 @@ export const applyManifest = (name: string, yaml: string) =>
 export const deleteManifest = (name: string, yaml: string) =>
   api.post(`/clusters/${name}/k8s/delete`, { yaml });
 
+export const getK8sResourceManifest = (
+  clusterName: string, type: string, namespace: string, resourceName: string
+) =>
+  api.get<{ yaml: string }>(
+    `/clusters/${clusterName}/k8s/${type}/${namespace}/${resourceName}/manifest`
+  ).then((r) => r.data.yaml);
+
+// Manifest Templates
+export interface ManifestTemplateResponse {
+  id: number;
+  clusterName: string;
+  name: string;
+  description: string | null;
+  yamlContent: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateManifestTemplateRequest {
+  clusterName: string;
+  name: string;
+  description?: string;
+  yamlContent: string;
+}
+
+export interface UpdateManifestTemplateRequest {
+  name: string;
+  description?: string;
+  yamlContent: string;
+}
+
+export const getManifestTemplates = (clusterName: string) =>
+  api.get<ManifestTemplateResponse[]>("/manifests", { params: { clusterName } }).then((r) => r.data);
+
+export const createManifestTemplate = (data: CreateManifestTemplateRequest) =>
+  api.post<ManifestTemplateResponse>("/manifests", data).then((r) => r.data);
+
+export const updateManifestTemplate = (id: number, data: UpdateManifestTemplateRequest) =>
+  api.put<ManifestTemplateResponse>(`/manifests/${id}`, data).then((r) => r.data);
+
+export const deleteManifestTemplate = (id: number) =>
+  api.delete(`/manifests/${id}`);
+
 // Jobs
 export const getJob = (jobId: string) =>
   api.get<JobResponse>(`/jobs/${jobId}`).then((r) => r.data);
