@@ -48,6 +48,27 @@ public class K8sController {
         return k8sService.getConfigMaps(name, namespace);
     }
 
+    @GetMapping("/statefulsets")
+    public List<K8sStatefulSetResponse> getStatefulSets(
+            @PathVariable String name,
+            @RequestParam(defaultValue = "all") String namespace) throws IOException {
+        return k8sService.getStatefulSets(name, namespace);
+    }
+
+    @GetMapping("/ingresses")
+    public List<K8sIngressResponse> getIngresses(
+            @PathVariable String name,
+            @RequestParam(defaultValue = "all") String namespace) throws IOException {
+        return k8sService.getIngresses(name, namespace);
+    }
+
+    @GetMapping("/secrets")
+    public List<K8sSecretResponse> getSecrets(
+            @PathVariable String name,
+            @RequestParam(defaultValue = "all") String namespace) throws IOException {
+        return k8sService.getSecrets(name, namespace);
+    }
+
     @GetMapping("/pods/{namespace}/{podName}/logs")
     public Map<String, String> getPodLogs(
             @PathVariable String name,

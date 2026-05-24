@@ -233,6 +233,23 @@ export const getK8sDeployments = (name: string, namespace: string) =>
 export const getK8sConfigMaps = (name: string, namespace: string) =>
   api.get<K8sConfigMapResponse[]>(`/clusters/${name}/k8s/configmaps`, { params: { namespace } }).then((r) => r.data);
 
+export interface K8sStatefulSetResponse {
+  name: string; namespace: string; ready: string; age: string;
+}
+export interface K8sIngressResponse {
+  name: string; namespace: string; hosts: string; age: string;
+}
+export interface K8sSecretResponse {
+  name: string; namespace: string; type: string; dataCount: number; age: string;
+}
+
+export const getK8sStatefulSets = (name: string, namespace: string) =>
+  api.get<K8sStatefulSetResponse[]>(`/clusters/${name}/k8s/statefulsets`, { params: { namespace } }).then((r) => r.data);
+export const getK8sIngresses = (name: string, namespace: string) =>
+  api.get<K8sIngressResponse[]>(`/clusters/${name}/k8s/ingresses`, { params: { namespace } }).then((r) => r.data);
+export const getK8sSecrets = (name: string, namespace: string) =>
+  api.get<K8sSecretResponse[]>(`/clusters/${name}/k8s/secrets`, { params: { namespace } }).then((r) => r.data);
+
 export const applyManifest = (name: string, yaml: string) =>
   api.post(`/clusters/${name}/k8s/apply`, { yaml });
 

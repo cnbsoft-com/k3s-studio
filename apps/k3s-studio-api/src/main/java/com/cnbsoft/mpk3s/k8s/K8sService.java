@@ -6,6 +6,8 @@ import com.cnbsoft.mpk3s.cluster.ClusterRepository;
 import com.cnbsoft.mpk3s.common.ResourceNotFoundException;
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.apps.StatefulSet;
+import io.fabric8.kubernetes.api.model.networking.v1.Ingress;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.utils.Serialization;
@@ -70,6 +72,30 @@ public class K8sService {
         return configMaps.stream().map(this::toConfigMapResponse).toList();
     }
 
+    public List<K8sStatefulSetResponse> getStatefulSets(String clusterName, String namespace) throws IOException {
+        KubernetesClient client = client(clusterName);
+        List<StatefulSet> sets = "all".equals(namespace)
+                ? client.apps().statefulSets().inAnyNamespace().list().getItems()
+                : client.apps().statefulSets().inNamespace(namespace).list().getItems();
+        return sets.stream().map(this::toStatefulSetResponse).toList();
+    }
+
+    public List<K8sIngressResponse> getIngresses(String clusterName, String namespace) throws IOException {
+        KubernetesClient client = client(clusterName);
+        List<Ingress> ingresses = "all".equals(namespace)
+                ? client.network().v1().ingresses().inAnyNamespace().list().getItems()
+                : client.network().v1().ingresses().inNamespace(namespace).list().getItems();
+        return ingresses.stream().map(this::toIngressResponse).toList();
+    }
+
+    public List<K8sSecretResponse> getSecrets(String clusterName, String namespace) throws IOException {
+        KubernetesClient client = client(clusterName);
+        List<Secret> secrets = "all".equals(namespace)
+                ? client.secrets().inAnyNamespace().list().getItems()
+                : client.secrets().inNamespace(namespace).list().getItems();
+        return secrets.stream().map(this::toSecretResponse).toList();
+    }
+
     public String getPodLogs(String clusterName, String namespace, String podName, int tail) throws IOException {
         KubernetesClient client = client(clusterName);
         Pod pod = client.pods().inNamespace(namespace).withName(podName).get();
@@ -86,10 +112,13 @@ public class K8sService {
         }
         KubernetesClient client = client(clusterName);
         HasMetadata resource = switch (resourceType) {
-            case "pods"        -> client.pods().inNamespace(namespace).withName(resourceName).get();
-            case "services"    -> client.services().inNamespace(namespace).withName(resourceName).get();
-            case "deployments" -> client.apps().deployments().inNamespace(namespace).withName(resourceName).get();
-            case "configmaps"  -> client.configMaps().inNamespace(namespace).withName(resourceName).get();
+            case "pods"         -> client.pods().inNamespace(namespace).withName(resourceName).get();
+            case "services"     -> client.services().inNamespace(namespace).withName(resourceName).get();
+            case "deployments"  -> client.apps().deployments().inNamespace(namespace).withName(resourceName).get();
+            case "configmaps"   -> client.configMaps().inNamespace(namespace).withName(resourceName).get();
+            case "statefulsets" -> client.apps().statefulSets().inNamespace(namespace).withName(resourceName).get();
+            case "ingresses"    -> client.network().v1().ingresses().inNamespace(namespace).withName(resourceName).get();
+            case "secrets"      -> client.secrets().inNamespace(namespace).withName(resourceName).get();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
         if (resource == null) {
@@ -114,8 +143,12 @@ public class K8sService {
             svc.setStatus(null);
         } else if (resource instanceof Deployment d) {
             d.setStatus(null);
+        } else if (resource instanceof StatefulSet ss) {
+            ss.setStatus(null);
         } else if (resource instanceof ConfigMap cm) {
             replaceBinaryData(cm);
+        } else if (resource instanceof Secret secret) {
+            maskSecretData(secret);
         }
     }
 
@@ -230,6 +263,37 @@ public class K8sService {
                 meta.getNamespace(),
                 dataCount,
                 age(meta.getCreationTimestamp()));
+    }
+
+    private K8sStatefulSetResponse toStatefulSetResponse(StatefulSet ss) {
+        ObjectMeta meta = ss.getMetadata();
+        var status = ss.getStatus();
+        int desired = ss.getSpec().getReplicas() != null ? ss.getSpec().getReplicas() : 0;
+        int ready = status != null && status.getReadyReplicas() != null ? status.getReadyReplicas() : 0;
+        return new K8sStatefulSetResponse(meta.getName(), meta.getNamespace(), ready + "/" + desired, age(meta.getCreationTimestamp()));
+    }
+
+    private K8sIngressResponse toIngressResponse(Ingress ingress) {
+        ObjectMeta meta = ingress.getMetadata();
+        String hosts = ingress.getSpec().getRules() == null ? "-" :
+                ingress.getSpec().getRules().stream()
+                        .map(r -> r.getHost() != null ? r.getHost() : "*")
+                        .reduce((a, b) -> a + ", " + b).orElse("-");
+        return new K8sIngressResponse(meta.getName(), meta.getNamespace(), hosts, age(meta.getCreationTimestamp()));
+    }
+
+    private K8sSecretResponse toSecretResponse(Secret secret) {
+        ObjectMeta meta = secret.getMetadata();
+        int dataCount = secret.getData() != null ? secret.getData().size() : 0;
+        return new K8sSecretResponse(meta.getName(), meta.getNamespace(), secret.getType(), dataCount, age(meta.getCreationTimestamp()));
+    }
+
+    private void maskSecretData(Secret secret) {
+        if (secret.getData() == null || secret.getData().isEmpty()) return;
+        Map<String, String> masked = new LinkedHashMap<>();
+        secret.getData().forEach((key, val) -> masked.put(key, "<secret>"));
+        secret.setData(null);
+        secret.setStringData(masked);
     }
 
     private String age(String creationTimestamp) {

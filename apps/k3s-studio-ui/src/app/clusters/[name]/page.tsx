@@ -8,6 +8,7 @@ import {
   startNode, stopNode, restartNode, suspendNode,
   startCluster, stopCluster, restartCluster, suspendCluster,
   getK8sNamespaces, getK8sPods, getK8sServices, getK8sDeployments, getK8sConfigMaps,
+  getK8sStatefulSets, getK8sIngresses, getK8sSecrets,
   applyManifest, deleteManifest,
   getK8sResourceManifest,
   getManifestTemplates, createManifestTemplate,
@@ -24,7 +25,7 @@ import { ManifestEditor } from "@/components/manifest-editor";
 import { toast } from "sonner";
 import { Trash2, Plus, Shield, Download, Play, Square, RotateCcw, PauseCircle } from "lucide-react";
 
-type ResourceType = "pods" | "services" | "deployments" | "configmaps";
+type ResourceType = "pods" | "services" | "deployments" | "configmaps" | "statefulsets" | "ingresses" | "secrets";
 interface SelectedResource { type: ResourceType; namespace: string; name: string }
 
 export default function ClusterDetailPage({ params }: { params: Promise<{ name: string }> }) {
@@ -172,6 +173,27 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     staleTime: 15_000,
   });
 
+  const { data: k8sStatefulSets = [], isLoading: statefulSetsLoading } = useQuery({
+    queryKey: ["k8s-statefulsets", name, k8sNamespace],
+    queryFn: () => getK8sStatefulSets(name, k8sNamespace),
+    enabled: activeTab === "k8s" && k8sResource === "statefulsets",
+    staleTime: 15_000,
+  });
+
+  const { data: k8sIngresses = [], isLoading: ingressesLoading } = useQuery({
+    queryKey: ["k8s-ingresses", name, k8sNamespace],
+    queryFn: () => getK8sIngresses(name, k8sNamespace),
+    enabled: activeTab === "k8s" && k8sResource === "ingresses",
+    staleTime: 15_000,
+  });
+
+  const { data: k8sSecrets = [], isLoading: secretsLoading } = useQuery({
+    queryKey: ["k8s-secrets", name, k8sNamespace],
+    queryFn: () => getK8sSecrets(name, k8sNamespace),
+    enabled: activeTab === "k8s" && k8sResource === "secrets",
+    staleTime: 15_000,
+  });
+
   const {
     data: readonlyYaml,
     isLoading: manifestLoading,
@@ -242,12 +264,18 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     k8sResource === "pods" ? k8sPods :
     k8sResource === "services" ? k8sServices :
     k8sResource === "deployments" ? k8sDeployments :
+    k8sResource === "statefulsets" ? k8sStatefulSets :
+    k8sResource === "ingresses" ? k8sIngresses :
+    k8sResource === "secrets" ? k8sSecrets :
     k8sConfigMaps;
 
   const k8sLoading =
     k8sResource === "pods" ? podsLoading :
     k8sResource === "services" ? servicesLoading :
     k8sResource === "deployments" ? deploymentsLoading :
+    k8sResource === "statefulsets" ? statefulSetsLoading :
+    k8sResource === "ingresses" ? ingressesLoading :
+    k8sResource === "secrets" ? secretsLoading :
     configMapsLoading;
 
   const selectedKey = selectedResource
@@ -368,16 +396,16 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               value={k8sNamespace}
               onChange={(ns) => { setK8sNamespace(ns); handleTypeOrNsChange(); }}
             />
-            <div className="flex rounded-lg border overflow-hidden">
-              {(["pods", "services", "deployments", "configmaps"] as const).map((r) => (
+            <div className="flex rounded-lg border overflow-hidden flex-wrap">
+              {(["pods", "services", "deployments", "statefulsets", "ingresses", "secrets", "configmaps"] as const).map((r) => (
                 <button
                   key={r}
                   onClick={() => { setK8sResource(r); handleTypeOrNsChange(); }}
-                  className={`px-3 py-1.5 text-sm capitalize ${
+                  className={`px-3 py-1.5 text-sm ${
                     k8sResource === r ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                   }`}
                 >
-                  {r === "pods" ? "Pods" : r === "services" ? "Services" : r === "deployments" ? "Deployments" : "ConfigMaps"}
+                  {{ pods: "Pods", services: "Services", deployments: "Deployments", statefulsets: "StatefulSets", ingresses: "Ingresses", secrets: "Secrets", configmaps: "ConfigMaps" }[r]}
                 </button>
               ))}
             </div>

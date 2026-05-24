@@ -5,13 +5,17 @@ import {
   K8sServiceResponse,
   K8sDeploymentResponse,
   K8sConfigMapResponse,
+  K8sStatefulSetResponse,
+  K8sIngressResponse,
+  K8sSecretResponse,
 } from "@/lib/api";
 
-type ResourceType = "pods" | "services" | "deployments" | "configmaps";
+type ResourceType = "pods" | "services" | "deployments" | "configmaps" | "statefulsets" | "ingresses" | "secrets";
 
 interface K8sResourceTableProps {
   resourceType: ResourceType;
-  data: K8sPodResponse[] | K8sServiceResponse[] | K8sDeploymentResponse[] | K8sConfigMapResponse[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[];
   loading?: boolean;
   selectedKey?: string | null;
   onSelect?: (namespace: string, name: string) => void;
@@ -134,6 +138,82 @@ export function K8sResourceTable({ resourceType, data, loading, selectedKey, onS
                   <td className={td}>{d.upToDate}</td>
                   <td className={td}>{d.available}</td>
                   <td className={td}>{d.age}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (resourceType === "statefulsets") {
+    const sets = data as K8sStatefulSetResponse[];
+    return (
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full">
+          <thead className="bg-muted/50"><tr>
+            <th className={th}>Name</th><th className={th}>Namespace</th>
+            <th className={th}>Ready</th><th className={th}>Age</th>
+          </tr></thead>
+          <tbody className="divide-y">
+            {sets.map((s) => {
+              const key = `${s.namespace}/${s.name}`;
+              return (
+                <tr key={key} onClick={() => onSelect?.(s.namespace, s.name)} className={rowCls(selectedKey === key)}>
+                  <td className={td}>{s.name}</td><td className={td}>{s.namespace}</td>
+                  <td className={td}>{s.ready}</td><td className={td}>{s.age}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (resourceType === "ingresses") {
+    const ingresses = data as K8sIngressResponse[];
+    return (
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full">
+          <thead className="bg-muted/50"><tr>
+            <th className={th}>Name</th><th className={th}>Namespace</th>
+            <th className={th}>Hosts</th><th className={th}>Age</th>
+          </tr></thead>
+          <tbody className="divide-y">
+            {ingresses.map((i) => {
+              const key = `${i.namespace}/${i.name}`;
+              return (
+                <tr key={key} onClick={() => onSelect?.(i.namespace, i.name)} className={rowCls(selectedKey === key)}>
+                  <td className={td}>{i.name}</td><td className={td}>{i.namespace}</td>
+                  <td className={td}>{i.hosts}</td><td className={td}>{i.age}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (resourceType === "secrets") {
+    const secrets = data as K8sSecretResponse[];
+    return (
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full">
+          <thead className="bg-muted/50"><tr>
+            <th className={th}>Name</th><th className={th}>Namespace</th>
+            <th className={th}>Type</th><th className={th}>Data</th><th className={th}>Age</th>
+          </tr></thead>
+          <tbody className="divide-y">
+            {secrets.map((s) => {
+              const key = `${s.namespace}/${s.name}`;
+              return (
+                <tr key={key} onClick={() => onSelect?.(s.namespace, s.name)} className={rowCls(selectedKey === key)}>
+                  <td className={td}>{s.name}</td><td className={td}>{s.namespace}</td>
+                  <td className={`${td} text-xs text-muted-foreground`}>{s.type}</td>
+                  <td className={td}>{s.dataCount}</td><td className={td}>{s.age}</td>
                 </tr>
               );
             })}
