@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getClusters, getServers } from "@/lib/api";
 import { ClusterCard } from "@/components/cluster-card";
 import { ServerCard } from "@/components/server-card";
+import { EmptyState } from "@/components/empty-state";
 import { Plus, Server, Activity, AlertTriangle, Layers } from "lucide-react";
 
 export default function DashboardPage() {
@@ -16,11 +17,15 @@ export default function DashboardPage() {
   const { data: clusters = [], isLoading: clustersLoading } = useQuery({
     queryKey: ["clusters"],
     queryFn: () => getClusters(),
+    refetchInterval: (query) =>
+      query.state.data?.some((c) => ["CREATING", "DELETING"].includes(c.status))
+        ? 3000
+        : false,
   });
 
   const running = clusters.filter((c) => c.status === "RUNNING").length;
   const errors  = clusters.filter((c) => c.status === "ERROR").length;
-  const connectedServers = servers.filter((s) => s.status === "CONNECTED").length;
+  const hasServers = servers.length > 0;
 
   const clusterCountByServer = clusters.reduce<Record<number, number>>((acc, c) => {
     const sid = c.serverId ?? 0;
@@ -28,15 +33,19 @@ export default function DashboardPage() {
     return acc;
   }, {});
 
-  const isLoading = serversLoading || clustersLoading;
-
   return (
     <div className="space-y-10">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">대시보드</h1>
         <Link
-          href="/clusters/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          href={hasServers ? "/clusters/new" : "#"}
+          aria-disabled={!hasServers}
+          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            hasServers
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-muted text-muted-foreground cursor-not-allowed pointer-events-none"
+          }`}
+          title={!hasServers ? "서버를 먼저 추가해야 합니다" : undefined}
         >
           <Plus className="h-4 w-4" />
           새 클러스터
@@ -45,10 +54,10 @@ export default function DashboardPage() {
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <SummaryCard icon={<Server className="h-5 w-5" />}    label="전체 서버"   value={servers.length}   color="text-purple-600" />
-        <SummaryCard icon={<Layers className="h-5 w-5" />}    label="전체 클러스터" value={clusters.length} color="text-blue-600" />
-        <SummaryCard icon={<Activity className="h-5 w-5" />}  label="실행 중"     value={running}           color="text-green-600" />
-        <SummaryCard icon={<AlertTriangle className="h-5 w-5" />} label="오류"    value={errors}            color="text-red-600" />
+        <SummaryCard icon={<Server className="h-5 w-5" />}       label="전체 서버"    value={servers.length}   href="/servers"      color="text-purple-600" />
+        <SummaryCard icon={<Layers className="h-5 w-5" />}       label="전체 클러스터" value={clusters.length} href="#clusters"     color="text-blue-600" />
+        <SummaryCard icon={<Activity className="h-5 w-5" />}     label="실행 중"      value={running}          href="#clusters"     color="text-green-600" />
+        <SummaryCard icon={<AlertTriangle className="h-5 w-5" />} label="오류"        value={errors}           href="#clusters"     color="text-red-600" />
       </div>
 
       {/* 서버 목록 */}
@@ -65,6 +74,17 @@ export default function DashboardPage() {
               <div key={i} className="rounded-lg border bg-card p-5 h-32 animate-pulse bg-muted" />
             ))}
           </div>
+        ) : servers.length === 0 ? (
+          <EmptyState
+            icon={Server}
+            title="서버가 없습니다."
+            description="서버를 추가하면 클러스터를 생성할 수 있습니다."
+            action={
+              <Link href="/servers/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                <Plus className="h-4 w-4" /> 서버 추가
+              </Link>
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {servers.map((server) => (
@@ -75,7 +95,7 @@ export default function DashboardPage() {
       </section>
 
       {/* 클러스터 목록 */}
-      <section className="space-y-4">
+      <section id="clusters" className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">클러스터</h2>
         </div>
@@ -86,13 +106,17 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : clusters.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Server className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>클러스터가 없습니다.</p>
-            <Link href="/clusters/new" className="mt-3 inline-block text-primary hover:underline text-sm">
-              첫 클러스터 만들기
-            </Link>
-          </div>
+          <EmptyState
+            icon={Layers}
+            title="클러스터가 없습니다."
+            action={
+              hasServers ? (
+                <Link href="/clusters/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                  <Plus className="h-4 w-4" /> 첫 클러스터 만들기
+                </Link>
+              ) : undefined
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {clusters.map((cluster) => (
@@ -106,17 +130,17 @@ export default function DashboardPage() {
 }
 
 function SummaryCard({
-  icon, label, value, color,
+  icon, label, value, href, color,
 }: {
-  icon: React.ReactNode; label: string; value: number; color: string;
+  icon: React.ReactNode; label: string; value: number; href: string; color: string;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-5 flex items-center gap-4">
+    <Link href={href} className="rounded-lg border bg-card p-5 flex items-center gap-4 hover:bg-accent/50 transition-colors">
       <div className={`${color} p-2 rounded-lg bg-muted`}>{icon}</div>
       <div>
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className="text-2xl font-bold">{value}</p>
       </div>
-    </div>
+    </Link>
   );
 }

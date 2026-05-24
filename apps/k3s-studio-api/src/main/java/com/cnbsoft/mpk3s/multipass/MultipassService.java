@@ -11,9 +11,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * Multipass 클러스터 운영 서비스.
@@ -164,6 +166,62 @@ public class MultipassService {
         executor.execMultipass("exec", clusterName + "-master", "--",
                 "sudo", "systemctl", "restart", "k3s");
         logConsumer.accept("TLS SAN 설정 적용 완료 (domain=" + domain + ", masterIp=" + masterIp + ")");
+    }
+
+    // ── node / cluster control ─────────────────────────────────────────────
+
+    public void startNode(String nodeName) throws IOException, InterruptedException {
+        executor.execMultipass("start", nodeName);
+    }
+
+    public void stopNode(String nodeName) throws IOException, InterruptedException {
+        executor.execMultipass("stop", nodeName);
+    }
+
+    public void restartNode(String nodeName) throws IOException, InterruptedException {
+        executor.execMultipass("restart", nodeName);
+    }
+
+    public void suspendNode(String nodeName) throws IOException, InterruptedException {
+        executor.execMultipass("suspend", nodeName);
+    }
+
+    public void startCluster(String clusterName) throws IOException, InterruptedException {
+        List<MultipassNode> nodes = listClusterNodes(clusterName);
+        List<String> workers = nodes.stream()
+                .filter(n -> !n.getName().equals(clusterName + "-master"))
+                .map(MultipassNode::getName)
+                .toList();
+        executor.execMultipass("start", clusterName + "-master");
+        if (!workers.isEmpty()) {
+            String[] args = Stream.concat(Stream.of("start"), workers.stream()).toArray(String[]::new);
+            executor.execMultipass(args);
+        }
+    }
+
+    public void stopCluster(String clusterName) throws IOException, InterruptedException {
+        List<MultipassNode> nodes = listClusterNodes(clusterName);
+        List<String> workers = nodes.stream()
+                .filter(n -> !n.getName().equals(clusterName + "-master"))
+                .map(MultipassNode::getName)
+                .toList();
+        if (!workers.isEmpty()) {
+            String[] args = Stream.concat(Stream.of("stop"), workers.stream()).toArray(String[]::new);
+            executor.execMultipass(args);
+        }
+        executor.execMultipass("stop", clusterName + "-master");
+    }
+
+    public void restartCluster(String clusterName) throws IOException, InterruptedException {
+        stopCluster(clusterName);
+        startCluster(clusterName);
+    }
+
+    public void suspendCluster(String clusterName) throws IOException, InterruptedException {
+        List<MultipassNode> nodes = listClusterNodes(clusterName);
+        String[] nodeNames = nodes.stream().map(MultipassNode::getName).toArray(String[]::new);
+        String[] args = Stream.concat(Stream.of("suspend"), Arrays.stream(nodeNames)).toArray(String[]::new);
+        executor.execMultipass(args);
     }
 
     // ── private helpers ────────────────────────────────────────────────────

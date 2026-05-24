@@ -10,6 +10,7 @@ public class ClusterResponse {
     private Long id;
     private Long serverId;
     private String serverName;
+    private boolean serverLocal;
     private String name;
     private String status;
     private String masterSpec;

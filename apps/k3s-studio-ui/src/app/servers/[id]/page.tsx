@@ -10,8 +10,10 @@ import {
 import { ServerStatusBadge } from "@/components/server-status-badge";
 import { ClusterCard } from "@/components/cluster-card";
 import { JobLogViewer } from "@/components/job-log-viewer";
+import { Breadcrumb } from "@/components/breadcrumb";
+import { EmptyState } from "@/components/empty-state";
 import { toast } from "sonner";
-import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle, RotateCcw, Layers } from "lucide-react";
 import { useState } from "react";
 
 export default function ServerDetailPage() {
@@ -102,6 +104,7 @@ export default function ServerDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
+          <Breadcrumb items={[{ label: "서버", href: "/servers" }, { label: server.name }]} />
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{server.name}</h1>
             <ServerStatusBadge status={server.status} />
@@ -203,9 +206,7 @@ export default function ServerDetailPage() {
           </div>
         </div>
         {clusters.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            이 서버에 클러스터가 없습니다.
-          </div>
+          <EmptyState icon={Layers} title="이 서버에 클러스터가 없습니다." />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {clusters.map((cluster) => (

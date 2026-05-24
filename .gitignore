@@ -45,3 +45,4 @@ temp/
 **/**/node_modules
 apps/mpk3s-ui/node_modules/
 .next/
+.gstack/

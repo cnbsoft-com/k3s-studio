@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createCluster, getImages, getServers, CreateClusterRequest } from "@/lib/api";
 import { JobLogViewer } from "@/components/job-log-viewer";
 import { ServerStatusBadge } from "@/components/server-status-badge";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { toast } from "sonner";
 import { ChevronRight, ChevronLeft, Server } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -52,7 +53,7 @@ function NewClusterForm() {
   const searchParams = useSearchParams();
   const defaultServerId = searchParams.get("serverId") ? parseInt(searchParams.get("serverId")!) : null;
 
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(defaultServerId !== null ? 1 : 0);
   const [jobId, setJobId] = useState<string | null>(null);
 
   const { data: images = [] } = useQuery({ queryKey: ["images"], queryFn: getImages });
@@ -73,7 +74,10 @@ function NewClusterForm() {
 
   const mutation = useMutation({
     mutationFn: (data: CreateClusterRequest) => createCluster(data),
-    onSuccess: (res) => setJobId(res.jobId),
+    onSuccess: (res) => {
+      setJobId(res.jobId);
+      toast.success("클러스터 생성이 시작되었습니다.");
+    },
     onError: () => toast.error("클러스터 생성 요청 실패"),
   });
 
@@ -93,26 +97,44 @@ function NewClusterForm() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">새 클러스터 생성</h1>
+      <div className="space-y-1">
+        <Breadcrumb items={[{ label: "대시보드", href: "/" }, { label: "새 클러스터" }]} />
+        <h1 className="text-2xl font-bold">새 클러스터 생성</h1>
+      </div>
 
       {/* Stepper */}
-      <div className="flex items-center gap-1 flex-wrap">
+      <div className="flex items-center">
         {STEPS.map((s, i) => (
-          <div key={i} className="flex items-center gap-1">
-            <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-medium ${
-              i < step ? "bg-primary text-primary-foreground"
-              : i === step ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-              : "bg-muted text-muted-foreground"
-            }`}>
-              {i + 1}
+          <div key={i} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => i < step && setStep(i)}
+                disabled={i >= step}
+                className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
+                  i < step
+                    ? "bg-primary text-primary-foreground hover:bg-primary/80 cursor-pointer"
+                    : i === step
+                    ? "bg-primary text-primary-foreground ring-2 ring-primary/30 cursor-default"
+                    : "bg-muted text-muted-foreground cursor-default"
+                }`}
+                aria-label={s}
+              >
+                {i + 1}
+              </button>
+              <span className={`hidden sm:block text-xs mt-1 whitespace-nowrap ${
+                i === step ? "text-foreground font-medium" : "text-muted-foreground"
+              }`}>
+                {s}
+              </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`h-px w-6 ${i < step ? "bg-primary" : "bg-border"}`} />
+              <div className={`h-px flex-1 mx-1 mb-4 sm:mb-0 ${i < step ? "bg-primary" : "bg-border"}`} />
             )}
           </div>
         ))}
-        <span className="ml-2 text-sm text-muted-foreground">{STEPS[step]}</span>
       </div>
+      <p className="sm:hidden text-sm text-muted-foreground -mt-2">{STEPS[step]}</p>
 
       <form onSubmit={form.handleSubmit(onSubmit)}>
         {/* Step 0: 서버 선택 */}

@@ -51,6 +51,7 @@ export interface ClusterResponse {
   id: number;
   serverId: number | null;
   serverName: string | null;
+  serverLocal: boolean;
   name: string;
   status: "CREATING" | "RUNNING" | "ERROR" | "DELETING";
   masterSpec: string;
@@ -64,9 +65,11 @@ export interface ClusterResponse {
   updatedAt: string;
 }
 
+export type NodeState = "Running" | "Stopped" | "Starting" | "Restarting" | "Deleted" | "Suspended" | "Unknown";
+
 export interface NodeResponse {
   name: string;
-  state: string;
+  state: NodeState;
   ipv4: string;
   image: string;
   cpus: string;
@@ -158,6 +161,83 @@ export const deleteWorker = (name: string, workerName: string) =>
 
 export const addTls = (name: string, domain: string) =>
   api.post<{ jobId: string }>(`/clusters/${name}/tls`, { domain }).then((r) => r.data);
+
+// Node control
+export const startNode = (cluster: string, node: string) =>
+  api.post(`/clusters/${cluster}/nodes/${node}/start`);
+export const stopNode = (cluster: string, node: string) =>
+  api.post(`/clusters/${cluster}/nodes/${node}/stop`);
+export const restartNode = (cluster: string, node: string) =>
+  api.post(`/clusters/${cluster}/nodes/${node}/restart`);
+export const suspendNode = (cluster: string, node: string) =>
+  api.post(`/clusters/${cluster}/nodes/${node}/suspend`);
+
+// Cluster control
+export const startCluster = (name: string) =>
+  api.post(`/clusters/${name}/start`, null, { timeout: 120_000 });
+export const stopCluster = (name: string) =>
+  api.post(`/clusters/${name}/stop`, null, { timeout: 120_000 });
+export const restartCluster = (name: string) =>
+  api.post(`/clusters/${name}/restart`, null, { timeout: 240_000 });
+export const suspendCluster = (name: string) =>
+  api.post(`/clusters/${name}/suspend`);
+
+// K8s types
+export interface K8sPodResponse {
+  name: string;
+  namespace: string;
+  status: string;
+  ready: string;
+  age: string;
+  hostIp: string;
+}
+
+export interface K8sServiceResponse {
+  name: string;
+  namespace: string;
+  type: string;
+  clusterIp: string;
+  ports: string;
+  age: string;
+}
+
+export interface K8sDeploymentResponse {
+  name: string;
+  namespace: string;
+  ready: string;
+  upToDate: number;
+  available: number;
+  age: string;
+}
+
+export interface K8sConfigMapResponse {
+  name: string;
+  namespace: string;
+  data: number;
+  age: string;
+}
+
+// K8s API
+export const getK8sNamespaces = (name: string) =>
+  api.get<string[]>(`/clusters/${name}/k8s/namespaces`).then((r) => r.data);
+
+export const getK8sPods = (name: string, namespace: string) =>
+  api.get<K8sPodResponse[]>(`/clusters/${name}/k8s/pods`, { params: { namespace } }).then((r) => r.data);
+
+export const getK8sServices = (name: string, namespace: string) =>
+  api.get<K8sServiceResponse[]>(`/clusters/${name}/k8s/services`, { params: { namespace } }).then((r) => r.data);
+
+export const getK8sDeployments = (name: string, namespace: string) =>
+  api.get<K8sDeploymentResponse[]>(`/clusters/${name}/k8s/deployments`, { params: { namespace } }).then((r) => r.data);
+
+export const getK8sConfigMaps = (name: string, namespace: string) =>
+  api.get<K8sConfigMapResponse[]>(`/clusters/${name}/k8s/configmaps`, { params: { namespace } }).then((r) => r.data);
+
+export const applyManifest = (name: string, yaml: string) =>
+  api.post(`/clusters/${name}/k8s/apply`, { yaml });
+
+export const deleteManifest = (name: string, yaml: string) =>
+  api.post(`/clusters/${name}/k8s/delete`, { yaml });
 
 // Jobs
 export const getJob = (jobId: string) =>

@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Sidebar } from "@/components/sidebar";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -21,20 +22,19 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <body className={inter.className}>
         <Providers>
-          <div className="min-h-screen bg-background">
+          <div className="min-h-screen flex flex-col bg-background">
             <header className="border-b">
-              <div className="container mx-auto px-4 py-3 flex items-center gap-4">
+              <div className="px-4 py-3 flex items-center gap-4">
                 <span className="font-bold text-lg">K3s-Studio</span>
-                <nav className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <a href="/" className="hover:text-foreground transition-colors">대시보드</a>
-                  <a href="/servers" className="hover:text-foreground transition-colors">서버</a>
-                </nav>
                 <div className="ml-auto">
                   <ThemeToggle />
                 </div>
               </div>
             </header>
-            <main className="container mx-auto px-4 py-8">{children}</main>
+            <div className="flex flex-1 overflow-hidden">
+              <Sidebar />
+              <main className="flex-1 overflow-auto px-6 py-8">{children}</main>
+            </div>
           </div>
           <Toaster richColors position="top-right" />
         </Providers>

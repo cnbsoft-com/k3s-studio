@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: datasource,logging
+    active: datasource,logging,allowedorigins
   jpa:
     hibernate:
       ddl-auto: update

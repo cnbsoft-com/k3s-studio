@@ -41,8 +41,12 @@ public class ClusterService {
                 .map(c -> {
                     ClusterResponse res = ClusterResponse.from(c);
                     if (c.getServerId() != null) {
-                        serverRepository.findById(c.getServerId())
-                                .ifPresent(s -> res.setServerName(s.getName()));
+                        serverRepository.findById(c.getServerId()).ifPresent(s -> {
+                            res.setServerName(s.getName());
+                            res.setServerLocal(s.isLocal());
+                        });
+                    } else {
+                        res.setServerLocal(true);
                     }
                     return res;
                 })
@@ -54,8 +58,12 @@ public class ClusterService {
                 .orElseThrow(() -> new ClusterNotFoundException(name));
         ClusterResponse res = ClusterResponse.from(cluster);
         if (cluster.getServerId() != null) {
-            serverRepository.findById(cluster.getServerId())
-                    .ifPresent(s -> res.setServerName(s.getName()));
+            serverRepository.findById(cluster.getServerId()).ifPresent(s -> {
+                res.setServerName(s.getName());
+                res.setServerLocal(s.isLocal());
+            });
+        } else {
+            res.setServerLocal(true);
         }
         return res;
     }
@@ -338,6 +346,56 @@ public class ClusterService {
             c.setStatus(status);
             clusterRepository.save(c);
         });
+    }
+
+    // ── Instance control (synchronous) ────────────────────────────────────────
+
+    public void startNode(String clusterName, String nodeName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).startNode(nodeName);
+    }
+
+    public void stopNode(String clusterName, String nodeName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).stopNode(nodeName);
+    }
+
+    public void restartNode(String clusterName, String nodeName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).restartNode(nodeName);
+    }
+
+    public void suspendNode(String clusterName, String nodeName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).suspendNode(nodeName);
+    }
+
+    public void startCluster(String clusterName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).startCluster(clusterName);
+    }
+
+    public void stopCluster(String clusterName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).stopCluster(clusterName);
+    }
+
+    public void restartCluster(String clusterName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).restartCluster(clusterName);
+    }
+
+    public void suspendCluster(String clusterName) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        serviceFor(cluster).suspendCluster(clusterName);
     }
 
     private MultipassService serviceFor(Cluster cluster) {

@@ -84,4 +84,52 @@ public class ClusterController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(content.getBytes());
     }
+
+    @PostMapping("/{name}/nodes/{nodeName}/start")
+    public ResponseEntity<Void> startNode(@PathVariable String name, @PathVariable String nodeName) throws Exception {
+        clusterService.startNode(name, nodeName);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/nodes/{nodeName}/stop")
+    public ResponseEntity<Void> stopNode(@PathVariable String name, @PathVariable String nodeName) throws Exception {
+        clusterService.stopNode(name, nodeName);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/nodes/{nodeName}/restart")
+    public ResponseEntity<Void> restartNode(@PathVariable String name, @PathVariable String nodeName) throws Exception {
+        clusterService.restartNode(name, nodeName);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/nodes/{nodeName}/suspend")
+    public ResponseEntity<Void> suspendNode(@PathVariable String name, @PathVariable String nodeName) throws Exception {
+        clusterService.suspendNode(name, nodeName);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/start")
+    public ResponseEntity<Void> startCluster(@PathVariable String name) throws Exception {
+        clusterService.startCluster(name);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/stop")
+    public ResponseEntity<Void> stopCluster(@PathVariable String name) throws Exception {
+        clusterService.stopCluster(name);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/restart")
+    public ResponseEntity<Void> restartCluster(@PathVariable String name) throws Exception {
+        clusterService.restartCluster(name);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{name}/suspend")
+    public ResponseEntity<Void> suspendCluster(@PathVariable String name) throws Exception {
+        clusterService.suspendCluster(name);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -26,6 +26,7 @@ dependencies {
   implementation("com.fasterxml.jackson.module:jackson-module-parameter-names")
   implementation("org.springframework.boot:spring-boot-starter-actuator")
   implementation("com.hierynomus:sshj:0.38.0")
+  implementation("io.fabric8:kubernetes-client:7.0.0")
 
   runtimeOnly("org.postgresql:postgresql")
 
