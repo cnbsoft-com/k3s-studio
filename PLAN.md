@@ -49,7 +49,7 @@ DELETE /api/manifests/{id}
 
 ---
 
-## v2 연기 항목
+## v2 완료 항목
 
-- #6 apply 히스토리
-- #7 k8s API 30초 타임아웃 (KubernetesClientFactory ConfigBuilder에 추가 필요)
+- #6 apply 히스토리 — 완료 (커밋 `4129b2d`)
+- #7 k8s API 30초 타임아웃 — 완료 (커밋 `4129b2d`)
