@@ -12,6 +12,7 @@ import {
   getK8sResourceManifest,
   getManifestTemplates, createManifestTemplate,
   getApplyHistory,
+  getPodLogs,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { NodeTable } from "@/components/node-table";
@@ -37,6 +38,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   const [k8sNamespace, setK8sNamespace] = useState("all");
   const [k8sResource, setK8sResource] = useState<ResourceType>("pods");
   const [selectedResource, setSelectedResource] = useState<SelectedResource | null>(null);
+  const [panelTab, setPanelTab] = useState<"yaml" | "logs">("yaml");
   const [manifestYaml, setManifestYaml] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [yamlToSave, setYamlToSave] = useState("");
@@ -187,6 +189,18 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     staleTime: 0,
   });
 
+  const {
+    data: podLogs,
+    isLoading: logsLoading,
+    isError: logsError,
+    refetch: refetchLogs,
+  } = useQuery({
+    queryKey: ["pod-logs", name, selectedResource?.namespace, selectedResource?.name],
+    queryFn: () => getPodLogs(name, selectedResource!.namespace, selectedResource!.name),
+    enabled: selectedResource !== null && selectedResource.type === "pods" && panelTab === "logs",
+    staleTime: 0,
+  });
+
   const { data: applyHistory = [], refetch: refetchHistory } = useQuery({
     queryKey: ["apply-history", name],
     queryFn: () => getApplyHistory(name),
@@ -242,6 +256,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
   const handleResourceSelect = (namespace: string, resourceName: string) => {
     setSelectedResource({ type: k8sResource, namespace, name: resourceName });
+    setPanelTab("yaml");
   };
 
   const handleTypeOrNsChange = () => {
@@ -381,52 +396,93 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               />
             </div>
 
-            {/* 오른쪽: 읽기전용 YAML 패널 */}
-            <div className="rounded-lg border p-3 min-h-[160px]">
+            {/* 오른쪽: 읽기전용 패널 */}
+            <div className="rounded-lg border min-h-[160px] flex flex-col">
               {!selectedResource && (
-                <p className="text-sm text-muted-foreground text-center mt-8">
+                <p className="text-sm text-muted-foreground text-center mt-8 p-3">
                   테이블에서 리소스를 클릭하세요
                 </p>
               )}
-              {selectedResource && manifestLoading && (
-                <div className="space-y-2">
-                  <div className="animate-pulse h-4 bg-muted rounded w-3/4" />
-                  <div className="animate-pulse h-4 bg-muted rounded w-1/2" />
-                  <div className="animate-pulse h-4 bg-muted rounded w-5/6" />
-                  <div className="animate-pulse h-4 bg-muted rounded w-2/3" />
-                </div>
-              )}
-              {selectedResource && !manifestLoading && manifestError && (
-                <div className="space-y-2">
-                  <p className="text-sm text-destructive">manifest 조회 실패</p>
-                  <button
-                    onClick={() => refetchManifest()}
-                    className="text-xs rounded border px-2 py-1 hover:bg-muted"
-                  >
-                    재시도
-                  </button>
-                </div>
-              )}
-              {selectedResource && !manifestLoading && !manifestError && readonlyYaml && (
-                <div className="space-y-2">
-                  <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre bg-muted/30 rounded p-2">
-                    {readonlyYaml}
-                  </pre>
-                  <div className="flex gap-2">
+              {selectedResource && (
+                <>
+                  {/* 패널 탭 */}
+                  <div className="flex border-b px-3">
                     <button
-                      onClick={() => openSaveDialog(readonlyYaml)}
-                      className="rounded border px-3 py-1 text-xs hover:bg-muted"
+                      onClick={() => setPanelTab("yaml")}
+                      className={`py-2 px-3 text-xs font-medium border-b-2 -mb-px transition-colors ${panelTab === "yaml" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
                     >
-                      Template으로 저장
+                      YAML
                     </button>
-                    <button
-                      onClick={() => setManifestYaml(readonlyYaml)}
-                      className="rounded border px-3 py-1 text-xs hover:bg-muted"
-                    >
-                      편집기로 ↓
-                    </button>
+                    {selectedResource.type === "pods" && (
+                      <button
+                        onClick={() => setPanelTab("logs")}
+                        className={`py-2 px-3 text-xs font-medium border-b-2 -mb-px transition-colors ${panelTab === "logs" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+                      >
+                        로그
+                      </button>
+                    )}
                   </div>
-                </div>
+
+                  <div className="p-3 flex-1">
+                    {/* YAML 탭 */}
+                    {panelTab === "yaml" && (
+                      <>
+                        {manifestLoading && (
+                          <div className="space-y-2">
+                            <div className="animate-pulse h-4 bg-muted rounded w-3/4" />
+                            <div className="animate-pulse h-4 bg-muted rounded w-1/2" />
+                            <div className="animate-pulse h-4 bg-muted rounded w-5/6" />
+                            <div className="animate-pulse h-4 bg-muted rounded w-2/3" />
+                          </div>
+                        )}
+                        {!manifestLoading && manifestError && (
+                          <div className="space-y-2">
+                            <p className="text-sm text-destructive">manifest 조회 실패</p>
+                            <button onClick={() => refetchManifest()} className="text-xs rounded border px-2 py-1 hover:bg-muted">재시도</button>
+                          </div>
+                        )}
+                        {!manifestLoading && !manifestError && readonlyYaml && (
+                          <div className="space-y-2">
+                            <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre bg-muted/30 rounded p-2">
+                              {readonlyYaml}
+                            </pre>
+                            <div className="flex gap-2">
+                              <button onClick={() => openSaveDialog(readonlyYaml)} className="rounded border px-3 py-1 text-xs hover:bg-muted">Template으로 저장</button>
+                              <button onClick={() => setManifestYaml(readonlyYaml)} className="rounded border px-3 py-1 text-xs hover:bg-muted">편집기로 ↓</button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* 로그 탭 */}
+                    {panelTab === "logs" && (
+                      <>
+                        {logsLoading && (
+                          <div className="space-y-2">
+                            <div className="animate-pulse h-4 bg-muted rounded w-full" />
+                            <div className="animate-pulse h-4 bg-muted rounded w-5/6" />
+                            <div className="animate-pulse h-4 bg-muted rounded w-3/4" />
+                          </div>
+                        )}
+                        {!logsLoading && logsError && (
+                          <div className="space-y-2">
+                            <p className="text-sm text-destructive">로그 조회 실패</p>
+                            <button onClick={() => refetchLogs()} className="text-xs rounded border px-2 py-1 hover:bg-muted">재시도</button>
+                          </div>
+                        )}
+                        {!logsLoading && !logsError && (
+                          <div className="space-y-2">
+                            <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre bg-muted/30 rounded p-2">
+                              {podLogs || "(로그 없음)"}
+                            </pre>
+                            <button onClick={() => refetchLogs()} className="rounded border px-3 py-1 text-xs hover:bg-muted">새로고침</button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>

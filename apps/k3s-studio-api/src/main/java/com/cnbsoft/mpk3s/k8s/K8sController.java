@@ -48,6 +48,15 @@ public class K8sController {
         return k8sService.getConfigMaps(name, namespace);
     }
 
+    @GetMapping("/pods/{namespace}/{podName}/logs")
+    public Map<String, String> getPodLogs(
+            @PathVariable String name,
+            @PathVariable String namespace,
+            @PathVariable String podName,
+            @RequestParam(defaultValue = "100") int tail) throws IOException {
+        return Map.of("logs", k8sService.getPodLogs(name, namespace, podName, tail));
+    }
+
     @GetMapping("/{type}/{namespace}/{resourceName}/manifest")
     public Map<String, String> getManifest(
             @PathVariable String name,

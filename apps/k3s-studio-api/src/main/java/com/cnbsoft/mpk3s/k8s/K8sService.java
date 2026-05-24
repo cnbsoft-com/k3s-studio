@@ -70,6 +70,15 @@ public class K8sService {
         return configMaps.stream().map(this::toConfigMapResponse).toList();
     }
 
+    public String getPodLogs(String clusterName, String namespace, String podName, int tail) throws IOException {
+        KubernetesClient client = client(clusterName);
+        Pod pod = client.pods().inNamespace(namespace).withName(podName).get();
+        if (pod == null) {
+            throw new ResourceNotFoundException("pod not found: " + namespace + "/" + podName);
+        }
+        return client.pods().inNamespace(namespace).withName(podName).tailingLines(tail).getLog();
+    }
+
     public String getResourceManifest(String clusterName, String resourceType,
                                        String namespace, String resourceName) throws IOException {
         if ("all".equals(namespace)) {

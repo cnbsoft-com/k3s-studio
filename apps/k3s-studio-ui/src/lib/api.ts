@@ -246,6 +246,14 @@ export const getK8sResourceManifest = (
     `/clusters/${clusterName}/k8s/${type}/${namespace}/${resourceName}/manifest`
   ).then((r) => r.data.yaml);
 
+export const getPodLogs = (
+  clusterName: string, namespace: string, podName: string, tail = 100
+) =>
+  api.get<{ logs: string }>(
+    `/clusters/${clusterName}/k8s/pods/${namespace}/${podName}/logs`,
+    { params: { tail } }
+  ).then((r) => r.data.logs);
+
 // Manifest Templates
 export interface ManifestTemplateResponse {
   id: number;
