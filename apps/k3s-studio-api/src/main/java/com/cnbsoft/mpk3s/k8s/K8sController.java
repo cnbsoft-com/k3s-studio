@@ -73,4 +73,9 @@ public class K8sController {
         k8sService.deleteManifest(name, body.get("yaml"));
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/apply-history")
+    public List<ApplyHistoryResponse> getApplyHistory(@PathVariable String name) throws IOException {
+        return k8sService.getApplyHistory(name);
+    }
 }

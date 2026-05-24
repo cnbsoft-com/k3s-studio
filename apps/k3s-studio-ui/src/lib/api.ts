@@ -282,6 +282,18 @@ export const updateManifestTemplate = (id: number, data: UpdateManifestTemplateR
 export const deleteManifestTemplate = (id: number) =>
   api.delete(`/manifests/${id}`);
 
+export interface ApplyHistoryResponse {
+  id: number;
+  action: "apply" | "delete";
+  result: "success" | "failed";
+  errorMessage: string | null;
+  yamlContent: string;
+  executedAt: string;
+}
+
+export const getApplyHistory = (clusterName: string) =>
+  api.get<ApplyHistoryResponse[]>(`/clusters/${clusterName}/k8s/apply-history`).then((r) => r.data);
+
 // Jobs
 export const getJob = (jobId: string) =>
   api.get<JobResponse>(`/jobs/${jobId}`).then((r) => r.data);

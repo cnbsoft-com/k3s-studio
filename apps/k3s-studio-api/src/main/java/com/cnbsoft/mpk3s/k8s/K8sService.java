@@ -28,6 +28,7 @@ public class K8sService {
 
     private final ClusterRepository clusterRepository;
     private final KubernetesClientFactory clientFactory;
+    private final ApplyHistoryRepository historyRepository;
 
     public List<String> getNamespaces(String clusterName) throws IOException {
         KubernetesClient client = client(clusterName);
@@ -125,8 +126,10 @@ public class K8sService {
         try (var stream = new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8))) {
             client.load(stream).serverSideApply();
         } catch (KubernetesClientException e) {
+            saveHistory(clusterName, "apply", yaml, "failed", e.getMessage());
             throw new IllegalArgumentException("Manifest apply 실패: " + e.getMessage(), e);
         }
+        saveHistory(clusterName, "apply", yaml, "success", null);
     }
 
     public void deleteManifest(String clusterName, String yaml) throws IOException {
@@ -134,8 +137,26 @@ public class K8sService {
         try (var stream = new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8))) {
             client.load(stream).delete();
         } catch (KubernetesClientException e) {
+            saveHistory(clusterName, "delete", yaml, "failed", e.getMessage());
             throw new IllegalArgumentException("Manifest delete 실패: " + e.getMessage(), e);
         }
+        saveHistory(clusterName, "delete", yaml, "success", null);
+    }
+
+    public List<ApplyHistoryResponse> getApplyHistory(String clusterName) {
+        return historyRepository.findTop20ByClusterNameOrderByExecutedAtDesc(clusterName)
+                .stream().map(ApplyHistoryResponse::from).toList();
+    }
+
+    private void saveHistory(String clusterName, String action, String yaml, String result, String errorMsg) {
+        ApplyHistory h = new ApplyHistory();
+        h.setClusterName(clusterName);
+        h.setAction(action);
+        h.setYamlContent(yaml);
+        h.setResult(result);
+        h.setErrorMessage(errorMsg);
+        h.setExecutedAt(OffsetDateTime.now());
+        historyRepository.save(h);
     }
 
     // ── private helpers ────────────────────────────────────────────────────

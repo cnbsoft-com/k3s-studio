@@ -66,7 +66,9 @@ public class KubernetesClientFactory {
         String kubeconfigContent = Files.readString(kubeconfigPath);
 
         if (cluster.getServerId() == null || isLocalServer(cluster.getServerId())) {
-            Config config = Config.fromKubeconfig(kubeconfigContent);
+            Config config = new ConfigBuilder(Config.fromKubeconfig(kubeconfigContent))
+                    .withRequestTimeout(30_000)
+                    .build();
             return new KubernetesClientBuilder().withConfig(config).build();
         }
 
@@ -85,6 +87,7 @@ public class KubernetesClientFactory {
 
         Config config = new ConfigBuilder(Config.fromKubeconfig(patchedKubeconfig))
                 .withTrustCerts(true)
+                .withRequestTimeout(30_000)
                 .build();
         return new KubernetesClientBuilder().withConfig(config).build();
     }

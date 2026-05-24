@@ -11,6 +11,7 @@ import {
   applyManifest, deleteManifest,
   getK8sResourceManifest,
   getManifestTemplates, createManifestTemplate,
+  getApplyHistory,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { NodeTable } from "@/components/node-table";
@@ -186,16 +187,23 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     staleTime: 0,
   });
 
+  const { data: applyHistory = [], refetch: refetchHistory } = useQuery({
+    queryKey: ["apply-history", name],
+    queryFn: () => getApplyHistory(name),
+    enabled: activeTab === "k8s",
+    staleTime: 0,
+  });
+
   const applyMutation = useMutation({
     mutationFn: (yaml: string) => applyManifest(name, yaml),
-    onSuccess: () => toast.success("Manifest 적용 완료"),
-    onError: (e: Error) => toast.error("적용 실패: " + e.message),
+    onSuccess: () => { toast.success("Manifest 적용 완료"); refetchHistory(); },
+    onError: (e: Error) => { toast.error("적용 실패: " + e.message); refetchHistory(); },
   });
 
   const deleteManiMutation = useMutation({
     mutationFn: (yaml: string) => deleteManifest(name, yaml),
-    onSuccess: () => toast.success("Manifest 삭제 완료"),
-    onError: (e: Error) => toast.error("삭제 실패: " + e.message),
+    onSuccess: () => { toast.success("Manifest 삭제 완료"); refetchHistory(); },
+    onError: (e: Error) => { toast.error("삭제 실패: " + e.message); refetchHistory(); },
   });
 
   const saveTemplateMutation = useMutation({
@@ -437,6 +445,34 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               deletePending={deleteManiMutation.isPending}
             />
           </div>
+
+          {/* Apply 히스토리 */}
+          {applyHistory.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <h3 className="text-sm font-medium text-muted-foreground">Apply 히스토리</h3>
+              <div className="rounded-md border divide-y text-xs max-h-48 overflow-y-auto">
+                {applyHistory.map((h) => (
+                  <button
+                    key={h.id}
+                    onClick={() => setManifestYaml(h.yamlContent)}
+                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/50 text-left"
+                    title="편집기로 불러오기"
+                  >
+                    <span className={`shrink-0 font-medium ${h.action === "apply" ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`}>
+                      {h.action === "apply" ? "Apply" : "Delete"}
+                    </span>
+                    <span className={`shrink-0 ${h.result === "success" ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
+                      {h.result === "success" ? "성공" : "실패"}
+                    </span>
+                    <span className="truncate text-muted-foreground flex-1">{h.yamlContent.slice(0, 60)}</span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {new Date(h.executedAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
