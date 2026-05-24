@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./kafka-redis-client/gradlew -p . projects)",
+      "Bash(./kafka-redis-client/gradlew :kafka-core:jar :kafka-producer:compileJava :kafka-consumer:compileJava)",
+      "Bash(./kafka-redis-client/gradlew :kafka-producer:compileJava :kafka-consumer:compileJava :kafka-redis-client:compileJava)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gradle wrapper:*)",
+      "Bash(./gradlew :kafka-core:jar :kafka-producer:compileJava :kafka-consumer:compileJava)",
+      "Bash(./gradlew update:*)",
+      "Bash(multipass find:*)",
+      "Bash(pnpm add:*)",
+      "Bash(./gradlew compileJava)",
+      "Bash(./gradlew compileJava --rerun-tasks)",
+      "Bash(./gradlew classes:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm tsc *)"
+    ]
+  }
+}

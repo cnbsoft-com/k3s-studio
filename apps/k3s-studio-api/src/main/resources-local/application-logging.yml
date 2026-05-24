@@ -1,0 +1,4 @@
+logging:
+  level:
+    io.mpk3s: DEBUG
+

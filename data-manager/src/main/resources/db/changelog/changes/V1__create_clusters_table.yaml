@@ -1,7 +1,7 @@
 databaseChangeLog:
   - changeSet:
       id: V1__create_clusters_table
-      author: mpk3s
+      author: k3s-studio
       changes:
         - createTable:
             tableName: clusters
