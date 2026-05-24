@@ -96,6 +96,7 @@ public class K8sService {
         meta.setUid(null);
         meta.setCreationTimestamp(null);
         meta.setGeneration(null);
+        meta.setOwnerReferences(null);
 
         if (resource instanceof Pod pod) {
             pod.setStatus(null);
