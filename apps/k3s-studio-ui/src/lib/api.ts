@@ -172,6 +172,11 @@ export const restartNode = (cluster: string, node: string) =>
 export const suspendNode = (cluster: string, node: string) =>
   api.post(`/clusters/${cluster}/nodes/${node}/suspend`);
 
+export const setNodeHardware = (
+  cluster: string, node: string,
+  data: { cpus?: number; memory?: string; disk?: string }
+) => api.patch(`/clusters/${cluster}/nodes/${node}/hardware`, data);
+
 // Cluster control
 export const startCluster = (name: string) =>
   api.post(`/clusters/${name}/start`, null, { timeout: 120_000 });

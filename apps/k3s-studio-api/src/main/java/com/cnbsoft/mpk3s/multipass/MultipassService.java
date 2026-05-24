@@ -217,6 +217,19 @@ public class MultipassService {
         startCluster(clusterName);
     }
 
+    public void setNodeHardware(String nodeName, Integer cpus, String memory, String disk)
+            throws IOException, InterruptedException {
+        if (cpus != null) {
+            executor.execMultipass("set", "local." + nodeName + ".cpus=" + cpus);
+        }
+        if (memory != null && !memory.isBlank()) {
+            executor.execMultipass("set", "local." + nodeName + ".memory=" + memory);
+        }
+        if (disk != null && !disk.isBlank()) {
+            executor.execMultipass("set", "local." + nodeName + ".disk=" + disk);
+        }
+    }
+
     public void suspendCluster(String clusterName) throws IOException, InterruptedException {
         List<MultipassNode> nodes = listClusterNodes(clusterName);
         String[] nodeNames = nodes.stream().map(MultipassNode::getName).toArray(String[]::new);

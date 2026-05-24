@@ -109,6 +109,15 @@ public class ClusterController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{name}/nodes/{nodeName}/hardware")
+    public ResponseEntity<Void> setNodeHardware(
+            @PathVariable String name,
+            @PathVariable String nodeName,
+            @RequestBody SetHardwareRequest req) throws Exception {
+        clusterService.setNodeHardware(name, nodeName, req);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{name}/start")
     public ResponseEntity<Void> startCluster(@PathVariable String name) throws Exception {
         clusterService.startCluster(name);

@@ -374,6 +374,17 @@ public class ClusterService {
         serviceFor(cluster).suspendNode(nodeName);
     }
 
+    public void setNodeHardware(String clusterName, String nodeName, SetHardwareRequest req) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        MultipassService svc = serviceFor(cluster);
+        MultipassNode node = svc.getNode(nodeName);
+        if (!"Stopped".equalsIgnoreCase(node.getState())) {
+            throw new IllegalStateException("노드가 중지 상태가 아닙니다. 먼저 노드를 중지하세요. (현재: " + node.getState() + ")");
+        }
+        svc.setNodeHardware(nodeName, req.cpus(), req.memory(), req.disk());
+    }
+
     public void startCluster(String clusterName) throws Exception {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));

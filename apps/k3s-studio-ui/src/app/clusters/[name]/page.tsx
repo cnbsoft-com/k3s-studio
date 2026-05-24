@@ -14,6 +14,7 @@ import {
   getManifestTemplates, createManifestTemplate,
   getApplyHistory,
   getPodLogs,
+  setNodeHardware,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { NodeTable } from "@/components/node-table";
@@ -46,6 +47,10 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   const [saveName, setSaveName] = useState("");
   const [saveDesc, setSaveDesc] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [hardwareNode, setHardwareNode] = useState<string | null>(null);
+  const [hwCpus, setHwCpus] = useState("");
+  const [hwMemory, setHwMemory] = useState("");
+  const [hwDisk, setHwDisk] = useState("");
   const [deleteInput, setDeleteInput] = useState("");
   const [showAddWorker, setShowAddWorker] = useState(false);
   const [workerSpec, setWorkerSpec] = useState("medium");
@@ -132,6 +137,19 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     mutationFn: () => suspendCluster(name),
     onSuccess: () => { invalidateNodes(); toast.success("클러스터 일시정지 완료"); },
     onError: () => toast.error("클러스터 일시정지 실패"),
+  });
+
+  const setHardwareMutation = useMutation({
+    mutationFn: () => setNodeHardware(name, hardwareNode!, {
+      cpus: hwCpus ? Number(hwCpus) : undefined,
+      memory: hwMemory || undefined,
+      disk: hwDisk || undefined,
+    }),
+    onSuccess: () => {
+      setHardwareNode(null);
+      toast.success("스펙 수정 완료");
+    },
+    onError: (e: Error) => toast.error("스펙 수정 실패: " + e.message),
   });
 
   const isClusterPending =
@@ -379,6 +397,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               onStop={(n) => stopNodeMutation.mutate(n)}
               onRestart={(n) => restartNodeMutation.mutate(n)}
               onSuspend={(n) => suspendNodeMutation.mutate(n)}
+              onEditHardware={(n) => { setHardwareNode(n); setHwCpus(""); setHwMemory(""); setHwDisk(""); }}
               pendingNodes={pendingNodes}
               isClusterPending={isClusterPending}
             />
@@ -630,6 +649,38 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
             >
               {saveTemplateMutation.isPending ? "저장 중..." : "저장"}
+            </button>
+          </div>
+        </Dialog>
+      )}
+
+      {/* 스펙 수정 다이얼로그 */}
+      {hardwareNode && (
+        <Dialog title={`${hardwareNode} 스펙 수정`} onClose={() => setHardwareNode(null)}>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">변경할 항목만 입력하세요. 빈 칸은 현재 값 유지.</p>
+            <div>
+              <label className="block text-sm font-medium mb-1">CPU 코어 수</label>
+              <input type="number" min={1} max={32} value={hwCpus}
+                onChange={(e) => setHwCpus(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm" placeholder="예: 2" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">메모리</label>
+              <input value={hwMemory} onChange={(e) => setHwMemory(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm" placeholder="예: 4G" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">디스크 (증가만 가능)</label>
+              <input value={hwDisk} onChange={(e) => setHwDisk(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm" placeholder="예: 20G" />
+            </div>
+            <button
+              onClick={() => setHardwareMutation.mutate()}
+              disabled={(!hwCpus && !hwMemory && !hwDisk) || setHardwareMutation.isPending}
+              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
+            >
+              {setHardwareMutation.isPending ? "적용 중..." : "적용"}
             </button>
           </div>
         </Dialog>

@@ -1,6 +1,6 @@
 import { NodeResponse, NodeState } from "@/lib/api";
 import { NodeStatusBadge } from "@/components/node-status-badge";
-import { Trash2, RefreshCw, AlertCircle, Play, Square, RotateCcw, PauseCircle, Loader2 } from "lucide-react";
+import { Trash2, RefreshCw, AlertCircle, Play, Square, RotateCcw, PauseCircle, Loader2, Cpu } from "lucide-react";
 
 interface NodeTableProps {
   nodes: NodeResponse[];
@@ -13,6 +13,7 @@ interface NodeTableProps {
   onStop?: (nodeName: string) => void;
   onRestart?: (nodeName: string) => void;
   onSuspend?: (nodeName: string) => void;
+  onEditHardware?: (nodeName: string) => void;
   pendingNodes?: Set<string>;
   isClusterPending?: boolean;
 }
@@ -30,6 +31,7 @@ export function NodeTable({
   onStop,
   onRestart,
   onSuspend,
+  onEditHardware,
   pendingNodes = new Set(),
   isClusterPending,
 }: NodeTableProps) {
@@ -130,6 +132,15 @@ export function NodeTable({
                                 title="일시정지"
                               >
                                 <PauseCircle className="h-4 w-4" />
+                              </button>
+                            )}
+                            {node.state === "Stopped" && onEditHardware && (
+                              <button
+                                onClick={() => onEditHardware(node.name)}
+                                className="p-1 rounded text-muted-foreground hover:text-sky-600"
+                                title="스펙 수정"
+                              >
+                                <Cpu className="h-4 w-4" />
                               </button>
                             )}
                             {!isMaster && onDeleteWorker && (
