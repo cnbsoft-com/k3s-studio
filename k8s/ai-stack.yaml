@@ -1,0 +1,218 @@
+---
+# k3s-studio AI Stack
+# Deploy: kubectl apply -f k8s/ai-stack.yaml
+# Or via MCP tool: deploy_ai_stack (generates this manifest dynamically)
+#
+# Components:
+#   - Namespace: ai-system
+#   - Ollama (LLM runner)
+#   - Open WebUI (chat UI)
+#   - k3s-studio MCP Bridge (HTTP mode — exposes MCP tools to Open WebUI)
+#
+# Prereqs:
+#   - k3s cluster with local-path StorageClass
+#   - k3s-studio-api running on host at port 9090
+#   - NODE_IP env var set in mcp-bridge Deployment (host machine IP)
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-system
+
+---
+# ─── Ollama ───────────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: ai-system
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: ai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        resources:
+          requests:
+            memory: "2Gi"
+          limits:
+            memory: "4Gi"
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+      volumes:
+      - name: ollama-data
+        persistentVolumeClaim:
+          claimName: ollama-models
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: ai-system
+spec:
+  selector:
+    app: ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+
+---
+# ─── Open WebUI ───────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui-data
+  namespace: ai-system
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: ai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      containers:
+      - name: open-webui
+        image: ghcr.io/open-webui/open-webui:main
+        env:
+        - name: OLLAMA_BASE_URL
+          value: http://ollama:11434
+        - name: WEBUI_SECRET_KEY
+          value: k3s-studio-secret
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: webui-data
+          mountPath: /app/backend/data
+      volumes:
+      - name: webui-data
+        persistentVolumeClaim:
+          claimName: open-webui-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  namespace: ai-system
+spec:
+  type: NodePort
+  selector:
+    app: open-webui
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080
+
+---
+# ─── k3s-studio MCP Bridge ────────────────────────────────────────────────────
+# Runs the existing k3s-studio-mcp in HTTP mode (MCP_MODE=http).
+# Open WebUI registers this bridge as a Tool at http://mcp-bridge:3001
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-bridge
+  namespace: ai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-bridge
+  template:
+    metadata:
+      labels:
+        app: mcp-bridge
+    spec:
+      # hostNetwork allows the bridge to reach k3s-studio-api on the host at localhost:9090
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: mcp-bridge
+        image: node:22-alpine
+        command: ["node", "/app/dist/index.js"]
+        env:
+        - name: MCP_MODE
+          value: "http"
+        - name: MCP_HTTP_PORT
+          value: "3001"
+        - name: K3S_STUDIO_API_URL
+          value: "http://localhost:9090"
+        # OLLAMA_URL points to the Ollama pod via ClusterIP Service.
+        # With hostNetwork, pod DNS still resolves cluster services.
+        - name: OLLAMA_URL
+          value: "http://ollama.ai-system.svc.cluster.local:11434"
+        ports:
+        - containerPort: 3001
+        volumeMounts:
+        - name: app
+          mountPath: /app
+      initContainers:
+      - name: copy-app
+        image: node:22-alpine
+        command: ["sh", "-c", "cp -r /src/. /app/"]
+        volumeMounts:
+        - name: app
+          mountPath: /app
+        - name: src
+          mountPath: /src
+      volumes:
+      - name: app
+        emptyDir: {}
+      - name: src
+        hostPath:
+          # Adjust this path to where k3s-studio-mcp dist is on the host
+          path: /opt/k3s-studio-mcp
+          type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-bridge
+  namespace: ai-system
+spec:
+  selector:
+    app: mcp-bridge
+  ports:
+  - port: 3001
+    targetPort: 3001

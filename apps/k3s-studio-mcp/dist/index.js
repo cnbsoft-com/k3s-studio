@@ -26,6 +26,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // src/index.ts
 var import_mcp = require("@modelcontextprotocol/sdk/server/mcp.js");
 var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
+var import_inMemory = require("@modelcontextprotocol/sdk/inMemory.js");
+var import_client7 = require("@modelcontextprotocol/sdk/client/index.js");
+var import_express = __toESM(require("express"));
 
 // src/tools/cluster.ts
 var import_zod = require("zod");
@@ -41,6 +44,12 @@ var http = import_axios.default.create({
     ...apiKey ? { "X-Api-Key": apiKey } : {}
   },
   timeout: 1e4
+});
+var ollamaUrl = process.env.OLLAMA_URL ?? "http://localhost:11434";
+var ollamaHttp = import_axios.default.create({
+  baseURL: ollamaUrl,
+  headers: { "Content-Type": "application/json" },
+  timeout: 3e5
 });
 
 // src/polling.ts
@@ -459,6 +468,244 @@ ${data.log ?? "(no log yet)"}`
   );
 }
 
+// src/tools/ai.ts
+var import_zod5 = require("zod");
+function registerAiTools(server2) {
+  server2.tool(
+    "list_ollama_models",
+    "List models currently available in Ollama on the specified cluster.",
+    {
+      clusterName: import_zod5.z.string().describe("Cluster name where Ollama is deployed")
+    },
+    async ({ clusterName }) => {
+      try {
+        const { data } = await ollamaHttp.get("/api/tags");
+        const models = data.models ?? [];
+        if (models.length === 0) {
+          return { content: [{ type: "text", text: `No models in Ollama on cluster '${clusterName}'.` }] };
+        }
+        const rows = models.map(
+          (m) => `\u2022 ${m.name} (${(m.size / 1024 / 1024 / 1024).toFixed(1)} GB)`
+        );
+        return { content: [{ type: "text", text: `Ollama models on '${clusterName}':
+${rows.join("\n")}` }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Failed to reach Ollama: ${err.message}` }] };
+      }
+    }
+  );
+  server2.tool(
+    "pull_ollama_model",
+    "Start pulling a model into Ollama. Returns immediately \u2014 pull runs in background. Check completion with list_ollama_models.",
+    {
+      clusterName: import_zod5.z.string().describe("Cluster name where Ollama is deployed"),
+      model: import_zod5.z.string().describe("Model name to pull, e.g. qwen2.5-coder:3b")
+    },
+    async ({ clusterName, model }) => {
+      try {
+        ollamaHttp.post("/api/pull", { name: model }).catch(() => {
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Pull started for '${model}' on cluster '${clusterName}'.
+Check progress: list_ollama_models (model appears when pull completes).`
+            }
+          ]
+        };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Failed to start pull: ${err.message}` }] };
+      }
+    }
+  );
+  server2.tool(
+    "deploy_ai_stack",
+    "Deploy Ollama + Open WebUI to a k3s cluster. Applies the bundled AI stack manifest.",
+    {
+      clusterName: import_zod5.z.string().describe("Target cluster name"),
+      namespace: import_zod5.z.string().default("ai-system").describe("Kubernetes namespace (default: ai-system)"),
+      ollamaMemoryLimit: import_zod5.z.string().default("4Gi").describe("Ollama memory limit (e.g. 2Gi, 4Gi)")
+    },
+    async ({ clusterName, namespace, ollamaMemoryLimit }) => {
+      const manifest = buildAiStackManifest(namespace, ollamaMemoryLimit);
+      try {
+        const { data } = await http.post(`/api/clusters/${clusterName}/k8s/apply`, { yaml: manifest });
+        const jobId = data.jobId;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `AI stack deployment started on '${clusterName}' (namespace: ${namespace}).
+Job ID: ${jobId}
+Use get_job_status to monitor progress.`
+            }
+          ]
+        };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Deployment failed: ${err.message}` }] };
+      }
+    }
+  );
+  server2.tool(
+    "get_ai_assistant_url",
+    "Get the Open WebUI URL for a cluster where the AI stack has been deployed.",
+    {
+      clusterName: import_zod5.z.string().describe("Cluster name"),
+      namespace: import_zod5.z.string().default("ai-system").describe("Namespace where AI stack is deployed")
+    },
+    async ({ clusterName, namespace }) => {
+      try {
+        const { data } = await http.get(`/api/clusters/${clusterName}/k8s/services?namespace=${namespace}`);
+        const svc = (data ?? []).find((s) => s.name === "open-webui");
+        if (!svc) {
+          return { content: [{ type: "text", text: `open-webui Service not found in '${namespace}' on '${clusterName}'. Has deploy_ai_stack been run?` }] };
+        }
+        const nodePort = svc.ports?.find((p) => p.nodePort)?.nodePort;
+        if (!nodePort) {
+          return { content: [{ type: "text", text: `open-webui Service exists but no NodePort assigned yet.` }] };
+        }
+        const { data: nodes } = await http.get(`/api/clusters/${clusterName}/nodes`);
+        const nodeIp = nodes?.[0]?.ip ?? "<node-ip>";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Open WebUI URL: http://${nodeIp}:${nodePort}
+Register MCP Bridge: http://<bridge-node-ip>:3001`
+            }
+          ]
+        };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Failed to get URL: ${err.message}` }] };
+      }
+    }
+  );
+}
+function buildAiStackManifest(namespace, ollamaMemoryLimit) {
+  const ollamaMemoryRequest = ollamaMemoryLimit === "4Gi" ? "2Gi" : "1Gi";
+  return `
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${namespace}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: ${namespace}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui-data
+  namespace: ${namespace}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: ${namespace}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        resources:
+          requests:
+            memory: ${ollamaMemoryRequest}
+          limits:
+            memory: ${ollamaMemoryLimit}
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+      volumes:
+      - name: ollama-data
+        persistentVolumeClaim:
+          claimName: ollama-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: ${namespace}
+spec:
+  selector:
+    app: ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: ${namespace}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      containers:
+      - name: open-webui
+        image: ghcr.io/open-webui/open-webui:main
+        env:
+        - name: OLLAMA_BASE_URL
+          value: http://ollama:11434
+        - name: WEBUI_SECRET_KEY
+          value: k3s-studio-secret
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: webui-data
+          mountPath: /app/backend/data
+      volumes:
+      - name: webui-data
+        persistentVolumeClaim:
+          claimName: open-webui-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  namespace: ${namespace}
+spec:
+  type: NodePort
+  selector:
+    app: open-webui
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080
+`.trim();
+}
+
 // src/index.ts
 var server = new import_mcp.McpServer({
   name: "k3s-studio",
@@ -468,13 +715,65 @@ registerServerTools(server);
 registerClusterTools(server);
 registerNodeTools(server);
 registerK8sTools(server);
+registerAiTools(server);
+var mode = process.env.MCP_MODE ?? "stdio";
 async function main() {
+  if (mode === "http") {
+    await startHttpMode();
+  } else {
+    await startStdioMode();
+  }
+}
+async function startStdioMode() {
   const transport = new import_stdio.StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
-    `k3s-studio MCP server started (API: ${process.env.K3S_STUDIO_API_URL ?? "http://localhost:8080"})
+    `k3s-studio MCP server started in stdio mode (API: ${process.env.K3S_STUDIO_API_URL ?? "http://localhost:9090"})
 `
   );
+}
+async function startHttpMode() {
+  const [clientTransport, serverTransport] = import_inMemory.InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const mcpClient = new import_client7.Client({ name: "http-bridge", version: "0.1.0" }, {});
+  await mcpClient.connect(clientTransport);
+  const app = (0, import_express.default)();
+  app.use(import_express.default.json());
+  app.get("/tools", async (_req, res) => {
+    try {
+      const result = await mcpClient.listTools();
+      const functions = result.tools.map((tool) => ({
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema
+        }
+      }));
+      res.json(functions);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/tools/:name", async (req, res) => {
+    try {
+      const result = await mcpClient.callTool({
+        name: req.params.name,
+        arguments: req.body ?? {}
+      });
+      const text = result.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+      res.json({ result: text });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  const port = parseInt(process.env.MCP_HTTP_PORT ?? "3001");
+  app.listen(port, "0.0.0.0", () => {
+    process.stderr.write(
+      `k3s-studio MCP HTTP bridge started on :${port} (API: ${process.env.K3S_STUDIO_API_URL ?? "http://localhost:9090"})
+`
+    );
+  });
 }
 main().catch((err) => {
   process.stderr.write(`Fatal: ${err}
