@@ -38,7 +38,10 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [pendingNodes, setPendingNodes] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<"nodes" | "k8s">("nodes");
+  const [activeTab, setActiveTab] = useState<"nodes" | "k8s" | "ai">("nodes");
+  const [aiModel, setAiModel] = useState("qwen2.5-coder:3b");
+  const [aiMemory, setAiMemory] = useState("4Gi");
+  const [aiStorage, setAiStorage] = useState("20Gi");
   const [k8sNamespace, setK8sNamespace] = useState("all");
   const [k8sResource, setK8sResource] = useState<ResourceType>("pods");
   const [selectedResource, setSelectedResource] = useState<SelectedResource | null>(null);
@@ -256,6 +259,12 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     onError: (e: Error) => { toast.error(t("k8s.apply_failed") + ": " + e.message); refetchHistory(); },
   });
 
+  const aiDeployMutation = useMutation({
+    mutationFn: () => applyManifest(name, buildAiStackManifest("ai-system", aiMemory, aiStorage)),
+    onSuccess: () => toast.success(t("ai.deploy_started")),
+    onError: (e: Error) => toast.error(t("ai.deploy_failed") + ": " + e.message),
+  });
+
   const deleteManiMutation = useMutation({
     mutationFn: (yaml: string) => deleteManifest(name, yaml),
     onSuccess: () => { toast.success(t("k8s.delete_done")); refetchHistory(); },
@@ -331,7 +340,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   if (!cluster) return <p className="text-muted-foreground">{t("cluster.not_found")}</p>;
 
   return (
-    <div className={`space-y-6 ${activeTab === "k8s" ? "max-w-6xl" : "max-w-4xl"}`}>
+    <div className={`space-y-6 ${activeTab === "k8s" ? "max-w-6xl" : activeTab === "ai" ? "max-w-4xl" : "max-w-4xl"}`}>
       <div className="space-y-2">
         <Breadcrumb items={[{ label: t("dashboard.title"), href: "/" }, { label: cluster.name }]} />
         <div className="flex items-center gap-3">
@@ -357,7 +366,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
       {/* Tabs */}
       <div className="border-b flex gap-1">
-        {(["nodes", "k8s"] as const).map((tab) => (
+        {(["nodes", "k8s", "ai"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -367,7 +376,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "nodes" ? t("node.tab") : t("k8s.tab")}
+            {tab === "nodes" ? t("node.tab") : tab === "k8s" ? t("k8s.tab") : t("ai.tab")}
           </button>
         ))}
       </div>
@@ -579,6 +588,76 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
         </div>
       )}
 
+      {/* AI tab */}
+      {activeTab === "ai" && (
+        <div className="space-y-6 max-w-xl">
+          <div className="rounded-lg border p-5 space-y-4">
+            <div>
+              <h2 className="font-semibold">{t("ai.deploy_title")}</h2>
+              <p className="text-sm text-muted-foreground mt-1">{t("ai.deploy_desc")}</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("ai.model_label")}</label>
+                <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm bg-background">
+                  <option value="qwen2.5-coder:3b">qwen2.5-coder:3b (2GB RAM)</option>
+                  <option value="qwen2.5-coder:7b">qwen2.5-coder:7b (4GB RAM)</option>
+                  <option value="llama3.2:3b">llama3.2:3b (2GB RAM)</option>
+                  <option value="granite-code:3b">granite-code:3b (2GB RAM)</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">{t("ai.model_hint")}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("ai.memory_label")}</label>
+                <select value={aiMemory} onChange={(e) => setAiMemory(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm bg-background">
+                  <option value="2Gi">2Gi</option>
+                  <option value="4Gi">4Gi</option>
+                  <option value="8Gi">8Gi</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t("ai.storage_label")}</label>
+                <select value={aiStorage} onChange={(e) => setAiStorage(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm bg-background">
+                  <option value="10Gi">10Gi</option>
+                  <option value="20Gi">20Gi</option>
+                  <option value="50Gi">50Gi</option>
+                </select>
+              </div>
+            </div>
+            <button
+              onClick={() => aiDeployMutation.mutate()}
+              disabled={aiDeployMutation.isPending}
+              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+            >
+              {aiDeployMutation.isPending ? t("common.applying") : t("ai.deploy_button")}
+            </button>
+          </div>
+
+          <div className="rounded-lg border p-5 space-y-3">
+            <h3 className="font-semibold text-sm">{t("ai.webui_url")}</h3>
+            <p className="text-sm text-muted-foreground">{t("ai.webui_url_desc")}</p>
+            {nodes.length > 0 && (
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">{t("ai.webui_url")}:</span>
+                  <a href={`http://${nodes[0].ipv4}:30080`} target="_blank" rel="noopener noreferrer"
+                    className="font-mono text-primary hover:underline">
+                    http://{nodes[0].ipv4}:30080
+                  </a>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">{t("ai.mcp_bridge_url")}:</span>
+                  <span className="font-mono">{nodes[0].ipv4}:3001</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
@@ -759,6 +838,128 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       <p className="font-medium">{value || "-"}</p>
     </div>
   );
+}
+
+function buildAiStackManifest(namespace: string, memoryLimit: string, storage: string): string {
+  const memoryRequest = memoryLimit === "8Gi" ? "4Gi" : memoryLimit === "4Gi" ? "2Gi" : "1Gi";
+  return `apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${namespace}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: ${namespace}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: ${storage}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui-data
+  namespace: ${namespace}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: ${namespace}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        resources:
+          requests:
+            memory: ${memoryRequest}
+          limits:
+            memory: ${memoryLimit}
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+      volumes:
+      - name: ollama-data
+        persistentVolumeClaim:
+          claimName: ollama-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: ${namespace}
+spec:
+  selector:
+    app: ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: ${namespace}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      containers:
+      - name: open-webui
+        image: ghcr.io/open-webui/open-webui:main
+        env:
+        - name: OLLAMA_BASE_URL
+          value: http://ollama:11434
+        - name: WEBUI_SECRET_KEY
+          value: k3s-studio-secret
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: webui-data
+          mountPath: /app/backend/data
+      volumes:
+      - name: webui-data
+        persistentVolumeClaim:
+          claimName: open-webui-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  namespace: ${namespace}
+spec:
+  type: NodePort
+  selector:
+    app: open-webui
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080`;
 }
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {

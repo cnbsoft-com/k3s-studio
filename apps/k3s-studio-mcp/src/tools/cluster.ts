@@ -190,4 +190,42 @@ export function registerClusterTools(server: McpServer) {
       };
     }
   );
+
+  server.tool(
+    "restart_cluster",
+    "Restart a k3s cluster (all its VMs).",
+    {
+      name: z.string().describe("Cluster name"),
+    },
+    async ({ name }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/restart`);
+      return { content: [{ type: "text", text: `Cluster '${name}' restart initiated.` }] };
+    }
+  );
+
+  server.tool(
+    "suspend_cluster",
+    "Suspend a k3s cluster (saves VM state to disk, faster resume than stop).",
+    {
+      name: z.string().describe("Cluster name"),
+    },
+    async ({ name }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/suspend`);
+      return { content: [{ type: "text", text: `Cluster '${name}' suspended.` }] };
+    }
+  );
+
+  server.tool(
+    "get_kubeconfig",
+    "Download the kubeconfig file for a cluster so you can run kubectl commands against it.",
+    {
+      name: z.string().describe("Cluster name"),
+    },
+    async ({ name }) => {
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/kubeconfig`, {
+        responseType: "text",
+      });
+      return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data) }] };
+    }
+  );
 }

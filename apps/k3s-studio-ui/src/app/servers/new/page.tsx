@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import {
-  createServer, testServerConnection, checkMultipass, installMultipass,
+  createServer, updateServer, testServerConnection, checkMultipass, installMultipass,
   discoverClusters, importClusters, DiscoveredCluster,
 } from "@/lib/api";
 import { SshKeyInput } from "@/components/ssh-key-input";
@@ -57,7 +57,16 @@ export default function NewServerPage() {
   });
 
   const testMutation = useMutation({
-    mutationFn: (id: number) => testServerConnection(id),
+    mutationFn: async (id: number) => {
+      await updateServer(id, {
+        name: form.name,
+        host: form.host,
+        port: parseInt(form.port) || 22,
+        username: form.username,
+        privateKey: form.privateKey || undefined,
+      });
+      return testServerConnection(id);
+    },
     onSuccess: (res) => {
       setTestResult(res);
       if (res.success) toast.success(t("server.ssh_success"));
@@ -66,7 +75,16 @@ export default function NewServerPage() {
   });
 
   const checkMutation = useMutation({
-    mutationFn: (id: number) => checkMultipass(id),
+    mutationFn: async (id: number) => {
+      await updateServer(id, {
+        name: form.name,
+        host: form.host,
+        port: parseInt(form.port) || 22,
+        username: form.username,
+        privateKey: form.privateKey || undefined,
+      });
+      return checkMultipass(id);
+    },
     onSuccess: (res) => {
       setMultipassResult(res);
       setStep(2);

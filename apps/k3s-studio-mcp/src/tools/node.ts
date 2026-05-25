@@ -78,4 +78,79 @@ export function registerNodeTools(server: McpServer) {
       };
     }
   );
+
+  server.tool(
+    "start_node",
+    "Start a specific VM node in a cluster.",
+    {
+      name: z.string().describe("Cluster name"),
+      nodeName: z.string().describe("Node VM name (e.g. mycluster-master, mycluster-worker1)"),
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/start`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' started.` }] };
+    }
+  );
+
+  server.tool(
+    "stop_node",
+    "Stop a specific VM node in a cluster (data preserved).",
+    {
+      name: z.string().describe("Cluster name"),
+      nodeName: z.string().describe("Node VM name"),
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/stop`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' stopped.` }] };
+    }
+  );
+
+  server.tool(
+    "restart_node",
+    "Restart a specific VM node in a cluster.",
+    {
+      name: z.string().describe("Cluster name"),
+      nodeName: z.string().describe("Node VM name"),
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/restart`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' restarted.` }] };
+    }
+  );
+
+  server.tool(
+    "suspend_node",
+    "Suspend a specific VM node (saves state to disk).",
+    {
+      name: z.string().describe("Cluster name"),
+      nodeName: z.string().describe("Node VM name"),
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/suspend`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' suspended.` }] };
+    }
+  );
+
+  server.tool(
+    "update_node_hardware",
+    "Change CPU and memory allocation for a VM node. Node must be stopped first.",
+    {
+      name: z.string().describe("Cluster name"),
+      nodeName: z.string().describe("Node VM name"),
+      cpus: z.number().int().min(1).max(16).optional().describe("Number of CPUs"),
+      memoryGb: z.number().int().min(1).max(64).optional().describe("Memory in GB"),
+      diskGb: z.number().int().min(10).max(500).optional().describe("Disk size in GB"),
+    },
+    async ({ name, nodeName, cpus, memoryGb, diskGb }) => {
+      const body: Record<string, unknown> = {};
+      if (cpus !== undefined) body.cpus = cpus;
+      if (memoryGb !== undefined) body.memory = `${memoryGb}G`;
+      if (diskGb !== undefined) body.disk = `${diskGb}G`;
+      await http.patch(
+        `/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/hardware`,
+        body
+      );
+      return { content: [{ type: "text", text: `Node '${nodeName}' hardware updated.` }] };
+    }
+  );
 }
