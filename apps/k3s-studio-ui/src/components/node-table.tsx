@@ -1,6 +1,7 @@
 import { NodeResponse, NodeState } from "@/lib/api";
 import { NodeStatusBadge } from "@/components/node-status-badge";
 import { Trash2, RefreshCw, AlertCircle, Play, Square, RotateCcw, PauseCircle, Loader2, Cpu } from "lucide-react";
+import { useTranslation } from "@/contexts/I18nContext";
 
 interface NodeTableProps {
   nodes: NodeResponse[];
@@ -35,16 +36,17 @@ export function NodeTable({
   pendingNodes = new Set(),
   isClusterPending,
 }: NodeTableProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border overflow-hidden">
       <table className="w-full text-sm">
         <thead className="bg-muted">
           <tr>
-            <th className="text-left px-4 py-3 font-medium">이름</th>
-            <th className="text-left px-4 py-3 font-medium">종류</th>
-            <th className="text-left px-4 py-3 font-medium">상태</th>
-            <th className="text-left px-4 py-3 font-medium">IP</th>
-            <th className="text-left px-4 py-3 font-medium">이미지</th>
+            <th className="text-left px-4 py-3 font-medium">{t("node.col.name")}</th>
+            <th className="text-left px-4 py-3 font-medium">{t("node.col.type")}</th>
+            <th className="text-left px-4 py-3 font-medium">{t("node.col.status")}</th>
+            <th className="text-left px-4 py-3 font-medium">{t("node.col.ip")}</th>
+            <th className="text-left px-4 py-3 font-medium">{t("node.col.image")}</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>
@@ -54,13 +56,13 @@ export function NodeTable({
               <td colSpan={6} className="px-4 py-8 text-center">
                 <div className="flex flex-col items-center gap-2 text-destructive">
                   <AlertCircle className="h-5 w-5" />
-                  <span className="text-sm">노드 정보를 불러오지 못했습니다.</span>
+                  <span className="text-sm">{t("node.error")}</span>
                   {onRetry && (
                     <button
                       onClick={onRetry}
                       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mt-1"
                     >
-                      <RefreshCw className="h-3 w-3" /> 다시 시도
+                      <RefreshCw className="h-3 w-3" /> {t("common.retry")}
                     </button>
                   )}
                 </div>
@@ -86,7 +88,7 @@ export function NodeTable({
                             : "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
                         }`}
                       >
-                        {isMaster ? "마스터" : "워커"}
+                        {isMaster ? t("node.master") : t("node.worker")}
                       </span>
                     </td>
                     <td className="px-4 py-3"><NodeStatusBadge state={node.state} /></td>
@@ -102,7 +104,7 @@ export function NodeTable({
                               <button
                                 onClick={() => onStart(node.name)}
                                 className="p-1 rounded text-muted-foreground hover:text-green-600"
-                                title="시작"
+                                title={t("cluster.actions.start")}
                               >
                                 <Play className="h-4 w-4" />
                               </button>
@@ -111,7 +113,7 @@ export function NodeTable({
                               <button
                                 onClick={() => onStop(node.name)}
                                 className="p-1 rounded text-muted-foreground hover:text-amber-600"
-                                title="중지"
+                                title={t("cluster.actions.stop")}
                               >
                                 <Square className="h-4 w-4" />
                               </button>
@@ -120,7 +122,7 @@ export function NodeTable({
                               <button
                                 onClick={() => onRestart(node.name)}
                                 className="p-1 rounded text-muted-foreground hover:text-blue-600"
-                                title="재시작"
+                                title={t("cluster.actions.restart")}
                               >
                                 <RotateCcw className="h-4 w-4" />
                               </button>
@@ -129,7 +131,7 @@ export function NodeTable({
                               <button
                                 onClick={() => onSuspend(node.name)}
                                 className="p-1 rounded text-muted-foreground hover:text-indigo-600"
-                                title="일시정지"
+                                title={t("cluster.actions.suspend")}
                               >
                                 <PauseCircle className="h-4 w-4" />
                               </button>
@@ -138,7 +140,7 @@ export function NodeTable({
                               <button
                                 onClick={() => onEditHardware(node.name)}
                                 className="p-1 rounded text-muted-foreground hover:text-sky-600"
-                                title="스펙 수정"
+                                title={t("node.hardware_edit")}
                               >
                                 <Cpu className="h-4 w-4" />
                               </button>
@@ -147,7 +149,7 @@ export function NodeTable({
                               <button
                                 onClick={() => onDeleteWorker(node.name)}
                                 className="p-1 rounded text-destructive hover:text-destructive/80"
-                                title="워커 삭제"
+                                title={t("node.delete_worker")}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -162,7 +164,7 @@ export function NodeTable({
               {nodes.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    노드 없음
+                    {t("node.none")}
                   </td>
                 </tr>
               )}

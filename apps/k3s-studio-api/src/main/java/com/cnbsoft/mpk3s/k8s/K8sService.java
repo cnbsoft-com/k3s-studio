@@ -1,5 +1,6 @@
 package com.cnbsoft.mpk3s.k8s;
 
+import com.cnbsoft.mpk3s.common.AppException;
 import com.cnbsoft.mpk3s.cluster.Cluster;
 import com.cnbsoft.mpk3s.cluster.ClusterNotFoundException;
 import com.cnbsoft.mpk3s.cluster.ClusterRepository;
@@ -100,7 +101,7 @@ public class K8sService {
         KubernetesClient client = client(clusterName);
         Pod pod = client.pods().inNamespace(namespace).withName(podName).get();
         if (pod == null) {
-            throw new ResourceNotFoundException("pod not found: " + namespace + "/" + podName);
+            throw new ResourceNotFoundException("error.resource_not_found", "pod", namespace + "/" + podName);
         }
         return client.pods().inNamespace(namespace).withName(podName).tailingLines(tail).getLog();
     }
@@ -108,7 +109,7 @@ public class K8sService {
     public String getResourceManifest(String clusterName, String resourceType,
                                        String namespace, String resourceName) throws IOException {
         if ("all".equals(namespace)) {
-            throw new IllegalArgumentException("namespace=all은 manifest 조회에 사용할 수 없습니다.");
+            throw new AppException("error.namespace_all");
         }
         KubernetesClient client = client(clusterName);
         HasMetadata resource = switch (resourceType) {
@@ -119,10 +120,10 @@ public class K8sService {
             case "statefulsets" -> client.apps().statefulSets().inNamespace(namespace).withName(resourceName).get();
             case "ingresses"    -> client.network().v1().ingresses().inNamespace(namespace).withName(resourceName).get();
             case "secrets"      -> client.secrets().inNamespace(namespace).withName(resourceName).get();
-            default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
+            default -> throw new AppException("error.unknown_resource_type", resourceType);
         };
         if (resource == null) {
-            throw new ResourceNotFoundException(resourceType + " not found: " + namespace + "/" + resourceName);
+            throw new ResourceNotFoundException("error.resource_not_found", resourceType, namespace + "/" + resourceName);
         }
         stripServerMetadata(resource);
         return Serialization.asYaml(resource);
@@ -169,7 +170,7 @@ public class K8sService {
             client.load(stream).serverSideApply();
         } catch (KubernetesClientException e) {
             saveHistory(clusterName, "apply", yaml, "failed", e.getMessage());
-            throw new IllegalArgumentException("Manifest apply 실패: " + e.getMessage(), e);
+            throw new AppException("error.manifest_apply", e.getMessage());
         }
         saveHistory(clusterName, "apply", yaml, "success", null);
     }
@@ -180,7 +181,7 @@ public class K8sService {
             client.load(stream).delete();
         } catch (KubernetesClientException e) {
             saveHistory(clusterName, "delete", yaml, "failed", e.getMessage());
-            throw new IllegalArgumentException("Manifest delete 실패: " + e.getMessage(), e);
+            throw new AppException("error.manifest_delete", e.getMessage());
         }
         saveHistory(clusterName, "delete", yaml, "success", null);
     }

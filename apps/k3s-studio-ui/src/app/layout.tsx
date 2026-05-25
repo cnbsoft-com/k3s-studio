@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LangToggle } from "@/components/lang-toggle";
 import { Sidebar } from "@/components/sidebar";
 import { Toaster } from "sonner";
 
@@ -26,7 +27,8 @@ export default function RootLayout({
             <header className="border-b">
               <div className="px-4 py-3 flex items-center gap-4">
                 <span className="font-bold text-lg">K3s-Studio</span>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-2">
+                  <LangToggle />
                   <ThemeToggle />
                 </div>
               </div>

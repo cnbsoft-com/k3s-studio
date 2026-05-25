@@ -15,12 +15,14 @@ import { EmptyState } from "@/components/empty-state";
 import { toast } from "sonner";
 import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle, RotateCcw, Layers } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "@/contexts/I18nContext";
 
 export default function ServerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const serverId = parseInt(id);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [installJobId, setInstallJobId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -53,16 +55,16 @@ export default function ServerDetailPage() {
   const installMutation = useMutation({
     mutationFn: () => installMultipass(serverId),
     onSuccess: (res) => setInstallJobId(res.jobId),
-    onError: () => toast.error("설치 시작 실패"),
+    onError: () => toast.error(t("server.install_failed")),
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteServer(serverId),
     onSuccess: () => {
-      toast.success("서버가 삭제되었습니다.");
+      toast.success(t("server.deleted"));
       router.push("/servers");
     },
-    onError: () => toast.error("삭제 실패"),
+    onError: () => toast.error(t("server.delete_failed")),
   });
 
   const syncMutation = useMutation({
@@ -74,19 +76,19 @@ export default function ServerDetailPage() {
     },
     onSuccess: (count) => {
       if (count === 0) {
-        toast.info("새로 감지된 클러스터가 없습니다.");
+        toast.info(t("server.sync_none"));
       } else {
-        toast.success(`${count}개 클러스터가 동기화되었습니다.`);
+        toast.success(t("server.sync_count", count));
       }
       queryClient.invalidateQueries({ queryKey: ["clusters", serverId] });
     },
-    onError: () => toast.error("동기화 실패"),
+    onError: () => toast.error(t("server.sync_failed")),
   });
 
   if (installJobId) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
-        <h1 className="text-2xl font-bold">Multipass 설치 중</h1>
+        <h1 className="text-2xl font-bold">{t("server.multipass.installing")}</h1>
         <JobLogViewer
           jobId={installJobId}
           redirectOnSuccess={`/servers/${serverId}`}
@@ -96,7 +98,7 @@ export default function ServerDetailPage() {
   }
 
   if (isLoading || !server) {
-    return <div className="text-center py-20 text-muted-foreground">로딩 중...</div>;
+    return <div className="text-center py-20 text-muted-foreground">{t("common.loading")}</div>;
   }
 
   return (
@@ -104,13 +106,13 @@ export default function ServerDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <Breadcrumb items={[{ label: "서버", href: "/servers" }, { label: server.name }]} />
+          <Breadcrumb items={[{ label: t("nav.servers"), href: "/servers" }, { label: server.name }]} />
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{server.name}</h1>
             <ServerStatusBadge status={server.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            {server.local ? "localhost (로컬 서버)" : `${server.username}@${server.host}:${server.port}`}
+            {server.local ? `localhost (${t("server.local")})` : `${server.username}@${server.host}:${server.port}`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -122,11 +124,11 @@ export default function ServerDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors disabled:opacity-50"
               >
                 {testMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                연결 테스트
+                {t("server.connection_test")}
               </button>
               <button
                 onClick={() => {
-                  if (confirm(`서버 "${server.name}"을 삭제하시겠습니까?`)) {
+                  if (confirm(`${server.name}?`)) {
                     deleteMutation.mutate();
                   }
                 }}
@@ -134,14 +136,14 @@ export default function ServerDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                삭제
+                {t("server.delete")}
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* 연결 테스트 결과 */}
+      {/* Connection test result */}
       {testResult && (
         <div className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${
           testResult.success
@@ -153,20 +155,20 @@ export default function ServerDetailPage() {
         </div>
       )}
 
-      {/* Multipass 상태 (원격 서버만) */}
+      {/* Multipass status (remote servers only) */}
       {!server.local && mpCheck && (
         <div className="rounded-lg border bg-card p-4 space-y-2">
           <h2 className="text-sm font-semibold">Multipass</h2>
           {mpCheck.installed ? (
             <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
               <CheckCircle className="h-4 w-4" />
-              설치됨 {mpCheck.version && <span className="text-muted-foreground">({mpCheck.version})</span>}
+              {t("server.multipass.detected")} {mpCheck.version && <span className="text-muted-foreground">({mpCheck.version})</span>}
             </div>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-orange-700 dark:text-orange-400">
                 <XCircle className="h-4 w-4" />
-                미설치
+                {t("server.multipass.not_installed")}
               </div>
               <button
                 onClick={() => installMutation.mutate()}
@@ -174,17 +176,17 @@ export default function ServerDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 disabled:opacity-50"
               >
                 {installMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Multipass 설치
+                {t("server.multipass.install")}
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* 클러스터 목록 */}
+      {/* Cluster list */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">클러스터</h2>
+          <h2 className="text-lg font-semibold">{t("dashboard.clusters")}</h2>
           <div className="flex gap-2">
             <button
               onClick={() => syncMutation.mutate()}
@@ -201,12 +203,12 @@ export default function ServerDetailPage() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-4 w-4" />
-              새 클러스터
+              {t("cluster.new")}
             </Link>
           </div>
         </div>
         {clusters.length === 0 ? (
-          <EmptyState icon={Layers} title="이 서버에 클러스터가 없습니다." />
+          <EmptyState icon={Layers} title={t("server.no_clusters")} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {clusters.map((cluster) => (

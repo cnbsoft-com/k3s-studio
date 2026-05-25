@@ -6,9 +6,11 @@ import { getServers, getClusters, deleteServer } from "@/lib/api";
 import { ServerCard } from "@/components/server-card";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/contexts/I18nContext";
 
 export default function ServersPage() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const { data: servers = [], isLoading } = useQuery({
     queryKey: ["servers"],
     queryFn: getServers,
@@ -22,9 +24,9 @@ export default function ServersPage() {
     mutationFn: deleteServer,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["servers"] });
-      toast.success("서버가 삭제되었습니다.");
+      toast.success(t("server.deleted"));
     },
-    onError: () => toast.error("삭제 실패"),
+    onError: () => toast.error(t("server.delete_failed")),
   });
 
   const clusterCountByServer = clusters.reduce<Record<number, number>>((acc, c) => {
@@ -36,13 +38,13 @@ export default function ServersPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">서버 관리</h1>
+        <h1 className="text-2xl font-bold">{t("server.management")}</h1>
         <Link
           href="/servers/new"
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          서버 추가
+          {t("server.add")}
         </Link>
       </div>
 
@@ -54,7 +56,7 @@ export default function ServersPage() {
         </div>
       ) : servers.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
-          <p>등록된 서버가 없습니다.</p>
+          <p>{t("server.no_servers")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -331,3 +331,7 @@ export const getJob = (jobId: string) =>
 // Images
 export const getImages = () =>
   api.get<string[]>("/images").then((r) => r.data);
+
+// i18n
+export const getMessages = (lang: string) =>
+  api.get<Record<string, string>>(`/i18n/messages?lang=${lang}`).then((r) => r.data);

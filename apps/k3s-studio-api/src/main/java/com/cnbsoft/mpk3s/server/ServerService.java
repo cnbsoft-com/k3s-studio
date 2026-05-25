@@ -1,5 +1,6 @@
 package com.cnbsoft.mpk3s.server;
 
+import com.cnbsoft.mpk3s.common.AppException;
 import com.cnbsoft.mpk3s.cluster.ClusterService;
 import com.cnbsoft.mpk3s.config.EncryptionService;
 import com.cnbsoft.mpk3s.job.Job;
@@ -62,7 +63,7 @@ public class ServerService {
     @Transactional
     public ServerResponse createServer(ServerRequest req) {
         if (serverRepository.existsByName(req.getName())) {
-            throw new IllegalArgumentException("Server name already exists: " + req.getName());
+            throw new AppException("error.server_name_exists", req.getName());
         }
         Server server = new Server();
         server.setName(req.getName());
@@ -93,7 +94,7 @@ public class ServerService {
     @Transactional
     public void deleteServer(Long id) {
         Server server = findOrThrow(id);
-        if (server.isLocal()) throw new IllegalArgumentException("Cannot delete local server");
+        if (server.isLocal()) throw new AppException("error.local_server_delete");
         serverRepository.delete(server);
     }
 
@@ -112,7 +113,7 @@ public class ServerService {
             return Map.of("success", true, "message", "SSH 연결 성공");
         } catch (Exception e) {
             updateStatus(server, ServerStatus.UNREACHABLE);
-            return Map.of("success", false, "message", e.getMessage());
+            return Map.of("success", false, "message", String.valueOf(e.getMessage()));
         }
     }
 

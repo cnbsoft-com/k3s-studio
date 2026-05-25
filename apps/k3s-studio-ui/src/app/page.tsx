@@ -7,8 +7,10 @@ import { ClusterCard } from "@/components/cluster-card";
 import { ServerCard } from "@/components/server-card";
 import { EmptyState } from "@/components/empty-state";
 import { Plus, Server, Activity, AlertTriangle, Layers } from "lucide-react";
+import { useTranslation } from "@/contexts/I18nContext";
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const { data: servers = [], isLoading: serversLoading } = useQuery({
     queryKey: ["servers"],
     queryFn: getServers,
@@ -36,7 +38,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">대시보드</h1>
+        <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
         <Link
           href={hasServers ? "/clusters/new" : "#"}
           aria-disabled={!hasServers}
@@ -45,27 +47,27 @@ export default function DashboardPage() {
               ? "bg-primary text-primary-foreground hover:bg-primary/90"
               : "bg-muted text-muted-foreground cursor-not-allowed pointer-events-none"
           }`}
-          title={!hasServers ? "서버를 먼저 추가해야 합니다" : undefined}
+          title={!hasServers ? t("dashboard.need_server") : undefined}
         >
           <Plus className="h-4 w-4" />
-          새 클러스터
+          {t("dashboard.new_cluster")}
         </Link>
       </div>
 
-      {/* 요약 카드 */}
+      {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <SummaryCard icon={<Server className="h-5 w-5" />}       label="전체 서버"    value={servers.length}   href="/servers"      color="text-purple-600" />
-        <SummaryCard icon={<Layers className="h-5 w-5" />}       label="전체 클러스터" value={clusters.length} href="#clusters"     color="text-blue-600" />
-        <SummaryCard icon={<Activity className="h-5 w-5" />}     label="실행 중"      value={running}          href="#clusters"     color="text-green-600" />
-        <SummaryCard icon={<AlertTriangle className="h-5 w-5" />} label="오류"        value={errors}           href="#clusters"     color="text-red-600" />
+        <SummaryCard icon={<Server className="h-5 w-5" />}        label={t("dashboard.all_servers")}   value={servers.length}  href="/servers"   color="text-purple-600" />
+        <SummaryCard icon={<Layers className="h-5 w-5" />}        label={t("dashboard.all_clusters")}  value={clusters.length} href="#clusters"  color="text-blue-600" />
+        <SummaryCard icon={<Activity className="h-5 w-5" />}      label={t("dashboard.running")}       value={running}         href="#clusters"  color="text-green-600" />
+        <SummaryCard icon={<AlertTriangle className="h-5 w-5" />} label={t("dashboard.errors")}        value={errors}          href="#clusters"  color="text-red-600" />
       </div>
 
-      {/* 서버 목록 */}
+      {/* Server list */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">서버</h2>
+          <h2 className="text-lg font-semibold">{t("dashboard.servers")}</h2>
           <Link href="/servers" className="text-sm text-primary hover:underline">
-            전체 보기
+            {t("dashboard.view_all")}
           </Link>
         </div>
         {serversLoading ? (
@@ -77,11 +79,11 @@ export default function DashboardPage() {
         ) : servers.length === 0 ? (
           <EmptyState
             icon={Server}
-            title="서버가 없습니다."
-            description="서버를 추가하면 클러스터를 생성할 수 있습니다."
+            title={t("dashboard.no_servers.title")}
+            description={t("dashboard.no_servers.description")}
             action={
               <Link href="/servers/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-                <Plus className="h-4 w-4" /> 서버 추가
+                <Plus className="h-4 w-4" /> {t("dashboard.no_servers.action")}
               </Link>
             }
           />
@@ -94,10 +96,10 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* 클러스터 목록 */}
+      {/* Cluster list */}
       <section id="clusters" className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">클러스터</h2>
+          <h2 className="text-lg font-semibold">{t("dashboard.clusters")}</h2>
         </div>
         {clustersLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -108,11 +110,11 @@ export default function DashboardPage() {
         ) : clusters.length === 0 ? (
           <EmptyState
             icon={Layers}
-            title="클러스터가 없습니다."
+            title={t("dashboard.no_clusters.title")}
             action={
               hasServers ? (
                 <Link href="/clusters/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-                  <Plus className="h-4 w-4" /> 첫 클러스터 만들기
+                  <Plus className="h-4 w-4" /> {t("dashboard.no_clusters.action")}
                 </Link>
               ) : undefined
             }

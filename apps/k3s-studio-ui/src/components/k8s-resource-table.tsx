@@ -9,6 +9,7 @@ import {
   K8sIngressResponse,
   K8sSecretResponse,
 } from "@/lib/api";
+import { useTranslation } from "@/contexts/I18nContext";
 
 type ResourceType = "pods" | "services" | "deployments" | "configmaps" | "statefulsets" | "ingresses" | "secrets";
 
@@ -33,8 +34,9 @@ function rowCls(isSelected: boolean) {
 }
 
 export function K8sResourceTable({ resourceType, data, loading, selectedKey, onSelect }: K8sResourceTableProps) {
+  const { t } = useTranslation();
   if (loading) return <div className="animate-pulse h-24 bg-muted rounded-lg" />;
-  if (data.length === 0) return <p className="text-sm text-muted-foreground py-4">리소스가 없습니다.</p>;
+  if (data.length === 0) return <p className="text-sm text-muted-foreground py-4">{t("k8s.no_resources")}</p>;
 
   if (resourceType === "pods") {
     const pods = data as K8sPodResponse[];

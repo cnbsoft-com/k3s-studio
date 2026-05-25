@@ -25,6 +25,7 @@ import { K8sResourceTable } from "@/components/k8s-resource-table";
 import { ManifestEditor } from "@/components/manifest-editor";
 import { toast } from "sonner";
 import { Trash2, Plus, Shield, Download, Play, Square, RotateCcw, PauseCircle } from "lucide-react";
+import { useTranslation } from "@/contexts/I18nContext";
 
 type ResourceType = "pods" | "services" | "deployments" | "configmaps" | "statefulsets" | "ingresses" | "secrets";
 interface SelectedResource { type: ResourceType; namespace: string; name: string }
@@ -33,6 +34,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   const { name } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [pendingNodes, setPendingNodes] = useState<Set<string>>(new Set());
@@ -72,25 +74,25 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   const deleteMutation = useMutation({
     mutationFn: () => deleteCluster(name),
     onSuccess: (res) => { setShowDeleteDialog(false); setActiveJobId(res.jobId); },
-    onError: () => toast.error("삭제 요청 실패"),
+    onError: () => toast.error(t("cluster.delete_started")),
   });
 
   const addWorkerMutation = useMutation({
     mutationFn: () => addWorkers(name, { workerSpec, workerCount }),
-    onSuccess: (res) => { setShowAddWorker(false); setActiveJobId(res.jobId); toast.success("워커 추가가 시작되었습니다."); },
-    onError: () => toast.error("워커 추가 요청 실패"),
+    onSuccess: (res) => { setShowAddWorker(false); setActiveJobId(res.jobId); toast.success(t("cluster.worker_add_started")); },
+    onError: () => toast.error(t("cluster.worker_add_failed")),
   });
 
   const deleteWorkerMutation = useMutation({
     mutationFn: (workerName: string) => deleteWorker(name, workerName),
-    onSuccess: (res) => { setActiveJobId(res.jobId); toast.success("워커 삭제가 시작되었습니다."); },
-    onError: () => toast.error("워커 삭제 요청 실패"),
+    onSuccess: (res) => { setActiveJobId(res.jobId); toast.success(t("cluster.worker_delete_started")); },
+    onError: () => toast.error(t("cluster.worker_delete_failed")),
   });
 
   const tlsMutation = useMutation({
     mutationFn: () => addTls(name, tlsDomain),
-    onSuccess: (res) => { setShowTls(false); setActiveJobId(res.jobId); toast.success("TLS 설정이 시작되었습니다."); },
-    onError: () => toast.error("TLS 설정 요청 실패"),
+    onSuccess: (res) => { setShowTls(false); setActiveJobId(res.jobId); toast.success(t("cluster.tls_started")); },
+    onError: () => toast.error(t("cluster.tls_failed")),
   });
 
   const addPending = (node: string) => setPendingNodes((s) => new Set(s).add(node));
@@ -99,44 +101,44 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
   const startNodeMutation = useMutation({
     mutationFn: (nodeName: string) => { addPending(nodeName); return startNode(name, nodeName); },
-    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success("노드 시작 완료"); },
-    onError: (_e, n) => { rmPending(n); toast.error("노드 시작 실패"); },
+    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success(t("node.start_done")); },
+    onError: (_e, n) => { rmPending(n); toast.error(t("node.start_failed")); },
   });
   const stopNodeMutation = useMutation({
     mutationFn: (nodeName: string) => { addPending(nodeName); return stopNode(name, nodeName); },
-    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success("노드 중지 완료"); },
-    onError: (_e, n) => { rmPending(n); toast.error("노드 중지 실패"); },
+    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success(t("node.stop_done")); },
+    onError: (_e, n) => { rmPending(n); toast.error(t("node.stop_failed")); },
   });
   const restartNodeMutation = useMutation({
     mutationFn: (nodeName: string) => { addPending(nodeName); return restartNode(name, nodeName); },
-    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success("노드 재시작 완료"); },
-    onError: (_e, n) => { rmPending(n); toast.error("노드 재시작 실패"); },
+    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success(t("node.restart_done")); },
+    onError: (_e, n) => { rmPending(n); toast.error(t("node.restart_failed")); },
   });
   const suspendNodeMutation = useMutation({
     mutationFn: (nodeName: string) => { addPending(nodeName); return suspendNode(name, nodeName); },
-    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success("노드 일시정지 완료"); },
-    onError: (_e, n) => { rmPending(n); toast.error("노드 일시정지 실패"); },
+    onSuccess: (_d, n) => { rmPending(n); invalidateNodes(); toast.success(t("node.suspend_done")); },
+    onError: (_e, n) => { rmPending(n); toast.error(t("node.suspend_failed")); },
   });
 
   const startClusterMutation = useMutation({
     mutationFn: () => startCluster(name),
-    onSuccess: () => { invalidateNodes(); toast.success("클러스터 시작 완료"); },
-    onError: () => toast.error("클러스터 시작 실패"),
+    onSuccess: () => { invalidateNodes(); toast.success(t("cluster.start_done")); },
+    onError: () => toast.error(t("cluster.start_failed")),
   });
   const stopClusterMutation = useMutation({
     mutationFn: () => stopCluster(name),
-    onSuccess: () => { invalidateNodes(); toast.success("클러스터 중지 완료"); },
-    onError: () => toast.error("클러스터 중지 실패"),
+    onSuccess: () => { invalidateNodes(); toast.success(t("cluster.stop_done")); },
+    onError: () => toast.error(t("cluster.stop_failed")),
   });
   const restartClusterMutation = useMutation({
     mutationFn: () => restartCluster(name),
-    onSuccess: () => { invalidateNodes(); toast.success("클러스터 재시작 완료"); },
-    onError: () => toast.error("클러스터 재시작 실패"),
+    onSuccess: () => { invalidateNodes(); toast.success(t("cluster.restart_done")); },
+    onError: () => toast.error(t("cluster.restart_failed")),
   });
   const suspendClusterMutation = useMutation({
     mutationFn: () => suspendCluster(name),
-    onSuccess: () => { invalidateNodes(); toast.success("클러스터 일시정지 완료"); },
-    onError: () => toast.error("클러스터 일시정지 실패"),
+    onSuccess: () => { invalidateNodes(); toast.success(t("cluster.suspend_done")); },
+    onError: () => toast.error(t("cluster.suspend_failed")),
   });
 
   const setHardwareMutation = useMutation({
@@ -147,9 +149,9 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     }),
     onSuccess: () => {
       setHardwareNode(null);
-      toast.success("스펙 수정 완료");
+      toast.success(t("node.hardware_done"));
     },
-    onError: (e: Error) => toast.error("스펙 수정 실패: " + e.message),
+    onError: (e: Error) => toast.error(t("node.hardware_failed") + ": " + e.message),
   });
 
   const isClusterPending =
@@ -250,14 +252,14 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
   const applyMutation = useMutation({
     mutationFn: (yaml: string) => applyManifest(name, yaml),
-    onSuccess: () => { toast.success("Manifest 적용 완료"); refetchHistory(); },
-    onError: (e: Error) => { toast.error("적용 실패: " + e.message); refetchHistory(); },
+    onSuccess: () => { toast.success(t("k8s.apply_done")); refetchHistory(); },
+    onError: (e: Error) => { toast.error(t("k8s.apply_failed") + ": " + e.message); refetchHistory(); },
   });
 
   const deleteManiMutation = useMutation({
     mutationFn: (yaml: string) => deleteManifest(name, yaml),
-    onSuccess: () => { toast.success("Manifest 삭제 완료"); refetchHistory(); },
-    onError: (e: Error) => { toast.error("삭제 실패: " + e.message); refetchHistory(); },
+    onSuccess: () => { toast.success(t("k8s.delete_done")); refetchHistory(); },
+    onError: (e: Error) => { toast.error(t("k8s.delete_failed") + ": " + e.message); refetchHistory(); },
   });
 
   const saveTemplateMutation = useMutation({
@@ -267,13 +269,13 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
       setShowSaveDialog(false);
       setSaveName("");
       setSaveDesc("");
-      toast.success("Template 저장 완료");
+      toast.success(t("k8s.template_save_done"));
     },
     onError: (e: { response?: { status: number } } & Error) => {
       if (e.response?.status === 409) {
-        toast.error("이미 존재하는 이름입니다");
+        toast.error(t("k8s.template_save_conflict"));
       } else {
-        toast.error("저장 실패: " + e.message);
+        toast.error(t("k8s.template_save_failed") + ": " + e.message);
       }
     },
   });
@@ -326,35 +328,34 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   };
 
   if (clusterLoading) return <div className="animate-pulse h-32 bg-muted rounded-lg" />;
-  if (!cluster) return <p className="text-muted-foreground">클러스터를 찾을 수 없습니다.</p>;
+  if (!cluster) return <p className="text-muted-foreground">{t("cluster.not_found")}</p>;
 
   return (
     <div className={`space-y-6 ${activeTab === "k8s" ? "max-w-6xl" : "max-w-4xl"}`}>
       <div className="space-y-2">
-        <Breadcrumb items={[{ label: "대시보드", href: "/" }, { label: cluster.name }]} />
+        <Breadcrumb items={[{ label: t("dashboard.title"), href: "/" }, { label: cluster.name }]} />
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{cluster.name}</h1>
           <StatusBadge status={cluster.status} />
         </div>
       </div>
 
-      {/* 클러스터 정보 */}
+      {/* Cluster info */}
       <div className="rounded-lg border p-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-        <InfoItem label="마스터 스펙" value={cluster.masterSpec} />
-        <InfoItem label="워커 수" value={String(cluster.workerCount)} />
-        <InfoItem label="이미지" value={cluster.ubuntuImage} />
-        <InfoItem label="생성일" value={new Date(cluster.createdAt).toLocaleDateString("ko-KR")} />
+        <InfoItem label={t("cluster.info.master_spec")} value={cluster.masterSpec} />
+        <InfoItem label={t("cluster.info.worker_count")} value={String(cluster.workerCount)} />
+        <InfoItem label={t("cluster.info.image")} value={cluster.ubuntuImage} />
+        <InfoItem label={t("cluster.info.created_at")} value={new Date(cluster.createdAt).toLocaleDateString("ko-KR")} />
       </div>
 
-      {/* 작업 로그 */}
+      {/* Job log */}
       {activeJobId && (
         <div className="space-y-2">
-          <h2 className="font-semibold">진행 중인 작업</h2>
           <JobLogViewer jobId={activeJobId} onDone={handleJobDone} />
         </div>
       )}
 
-      {/* 탭 */}
+      {/* Tabs */}
       <div className="border-b flex gap-1">
         {(["nodes", "k8s"] as const).map((tab) => (
           <button
@@ -366,20 +367,20 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "nodes" ? "노드" : "K8s"}
+            {tab === "nodes" ? t("node.tab") : t("k8s.tab")}
           </button>
         ))}
       </div>
 
-      {/* 노드 탭 */}
+      {/* Nodes tab */}
       {activeTab === "nodes" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold">노드</h2>
+            <h2 className="font-semibold">{t("node.tab")}</h2>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowAddWorker(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors">
-                <Plus className="h-4 w-4" /> 워커 추가
+                <Plus className="h-4 w-4" /> {t("cluster.add_worker")}
               </button>
             </div>
           </div>
@@ -405,10 +406,10 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
         </div>
       )}
 
-      {/* K8s 탭 */}
+      {/* K8s tab */}
       {activeTab === "k8s" && (
         <div className="space-y-4">
-          {/* NS 셀렉터 + 리소스 타입 토글 */}
+          {/* NS selector + resource type toggle */}
           <div className="flex flex-wrap items-center gap-3">
             <NamespaceSelector
               namespaces={k8sNamespaces}
@@ -424,15 +425,15 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                     k8sResource === r ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                   }`}
                 >
-                  {{ pods: "Pods", services: "Services", deployments: "Deployments", statefulsets: "StatefulSets", ingresses: "Ingresses", secrets: "Secrets", configmaps: "ConfigMaps" }[r]}
+                  {t(`k8s.resource.${r}`)}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Split-pane: 테이블 | 읽기전용 YAML 패널 */}
+          {/* Split-pane: table | readonly YAML panel */}
           <div className="grid grid-cols-2 gap-4 items-start">
-            {/* 왼쪽: 리소스 테이블 */}
+            {/* Left: resource table */}
             <div className="min-w-0">
               <K8sResourceTable
                 resourceType={k8sResource}
@@ -443,16 +444,16 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               />
             </div>
 
-            {/* 오른쪽: 읽기전용 패널 */}
+            {/* Right: readonly panel */}
             <div className="rounded-lg border min-h-[160px] flex flex-col">
               {!selectedResource && (
                 <p className="text-sm text-muted-foreground text-center mt-8 p-3">
-                  테이블에서 리소스를 클릭하세요
+                  {t("k8s.click_hint")}
                 </p>
               )}
               {selectedResource && (
                 <>
-                  {/* 패널 탭 */}
+                  {/* Panel tabs */}
                   <div className="flex border-b px-3">
                     <button
                       onClick={() => setPanelTab("yaml")}
@@ -465,13 +466,13 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                         onClick={() => setPanelTab("logs")}
                         className={`py-2 px-3 text-xs font-medium border-b-2 -mb-px transition-colors ${panelTab === "logs" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
                       >
-                        로그
+                        {t("k8s.logs_tab")}
                       </button>
                     )}
                   </div>
 
                   <div className="p-3 flex-1">
-                    {/* YAML 탭 */}
+                    {/* YAML tab */}
                     {panelTab === "yaml" && (
                       <>
                         {manifestLoading && (
@@ -484,8 +485,8 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                         )}
                         {!manifestLoading && manifestError && (
                           <div className="space-y-2">
-                            <p className="text-sm text-destructive">manifest 조회 실패</p>
-                            <button onClick={() => refetchManifest()} className="text-xs rounded border px-2 py-1 hover:bg-muted">재시도</button>
+                            <p className="text-sm text-destructive">{t("k8s.manifest_failed")}</p>
+                            <button onClick={() => refetchManifest()} className="text-xs rounded border px-2 py-1 hover:bg-muted">{t("k8s.manifest_retry")}</button>
                           </div>
                         )}
                         {!manifestLoading && !manifestError && readonlyYaml && (
@@ -494,15 +495,15 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                               {readonlyYaml}
                             </pre>
                             <div className="flex gap-2">
-                              <button onClick={() => openSaveDialog(readonlyYaml)} className="rounded border px-3 py-1 text-xs hover:bg-muted">Template으로 저장</button>
-                              <button onClick={() => setManifestYaml(readonlyYaml)} className="rounded border px-3 py-1 text-xs hover:bg-muted">편집기로 ↓</button>
+                              <button onClick={() => openSaveDialog(readonlyYaml)} className="rounded border px-3 py-1 text-xs hover:bg-muted">{t("k8s.save_template")}</button>
+                              <button onClick={() => setManifestYaml(readonlyYaml)} className="rounded border px-3 py-1 text-xs hover:bg-muted">{t("k8s.to_editor")}</button>
                             </div>
                           </div>
                         )}
                       </>
                     )}
 
-                    {/* 로그 탭 */}
+                    {/* Logs tab */}
                     {panelTab === "logs" && (
                       <>
                         {logsLoading && (
@@ -514,16 +515,16 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                         )}
                         {!logsLoading && logsError && (
                           <div className="space-y-2">
-                            <p className="text-sm text-destructive">로그 조회 실패</p>
-                            <button onClick={() => refetchLogs()} className="text-xs rounded border px-2 py-1 hover:bg-muted">재시도</button>
+                            <p className="text-sm text-destructive">{t("k8s.logs_failed")}</p>
+                            <button onClick={() => refetchLogs()} className="text-xs rounded border px-2 py-1 hover:bg-muted">{t("common.retry")}</button>
                           </div>
                         )}
                         {!logsLoading && !logsError && (
                           <div className="space-y-2">
                             <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre bg-muted/30 rounded p-2">
-                              {podLogs || "(로그 없음)"}
+                              {podLogs || t("k8s.logs_empty")}
                             </pre>
-                            <button onClick={() => refetchLogs()} className="rounded border px-3 py-1 text-xs hover:bg-muted">새로고침</button>
+                            <button onClick={() => refetchLogs()} className="rounded border px-3 py-1 text-xs hover:bg-muted">{t("k8s.logs_refresh")}</button>
                           </div>
                         )}
                       </>
@@ -534,9 +535,9 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             </div>
           </div>
 
-          {/* Manifest 편집기 */}
+          {/* Manifest editor */}
           <div className="space-y-2 pt-2">
-            <h3 className="text-sm font-medium">Manifest 편집기</h3>
+            <h3 className="text-sm font-medium">{t("k8s.manifest_editor")}</h3>
             <ManifestEditor
               value={manifestYaml}
               onChange={setManifestYaml}
@@ -549,23 +550,22 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             />
           </div>
 
-          {/* Apply 히스토리 */}
+          {/* Apply history */}
           {applyHistory.length > 0 && (
             <div className="space-y-2 pt-1">
-              <h3 className="text-sm font-medium text-muted-foreground">Apply 히스토리</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">{t("k8s.history_title")}</h3>
               <div className="rounded-md border divide-y text-xs max-h-48 overflow-y-auto">
                 {applyHistory.map((h) => (
                   <button
                     key={h.id}
                     onClick={() => setManifestYaml(h.yamlContent)}
                     className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/50 text-left"
-                    title="편집기로 불러오기"
                   >
                     <span className={`shrink-0 font-medium ${h.action === "apply" ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`}>
                       {h.action === "apply" ? "Apply" : "Delete"}
                     </span>
                     <span className={`shrink-0 ${h.result === "success" ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
-                      {h.result === "success" ? "성공" : "실패"}
+                      {h.result === "success" ? t("k8s.history_success") : t("k8s.history_failed")}
                     </span>
                     <span className="truncate text-muted-foreground flex-1">{h.yamlContent.slice(0, 60)}</span>
                     <span className="shrink-0 text-muted-foreground">
@@ -584,46 +584,46 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
         <div className="flex flex-wrap gap-2">
           <button onClick={() => startClusterMutation.mutate()} disabled={isClusterPending}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
-            <Play className="h-4 w-4" /> 클러스터 시작
+            <Play className="h-4 w-4" /> {t("cluster.actions.start")}
           </button>
           <button onClick={() => stopClusterMutation.mutate()} disabled={isClusterPending}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
-            <Square className="h-4 w-4" /> 클러스터 중지
+            <Square className="h-4 w-4" /> {t("cluster.actions.stop")}
           </button>
           <button onClick={() => restartClusterMutation.mutate()} disabled={isClusterPending}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
-            <RotateCcw className="h-4 w-4" /> 클러스터 재시작
+            <RotateCcw className="h-4 w-4" /> {t("cluster.actions.restart")}
           </button>
           {cluster.serverLocal && (
             <button onClick={() => suspendClusterMutation.mutate()} disabled={isClusterPending}
               className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
-              <PauseCircle className="h-4 w-4" /> 클러스터 일시정지
+              <PauseCircle className="h-4 w-4" /> {t("cluster.actions.suspend")}
             </button>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowTls(true)}
             className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-muted">
-            <Shield className="h-4 w-4" /> TLS SAN 설정
+            <Shield className="h-4 w-4" /> {t("cluster.tls")}
           </button>
           <a href={`/api/clusters/${name}/kubeconfig`} download
             className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-muted">
-            <Download className="h-4 w-4" /> kubeconfig 다운로드
+            <Download className="h-4 w-4" /> {t("cluster.kubeconfig")}
           </a>
           <button onClick={() => setShowDeleteDialog(true)}
             className="inline-flex items-center gap-2 rounded-lg border border-destructive text-destructive px-4 py-2 text-sm hover:bg-destructive/10">
-            <Trash2 className="h-4 w-4" /> 클러스터 삭제
+            <Trash2 className="h-4 w-4" /> {t("cluster.actions.delete")}
           </button>
         </div>
       </div>
 
-      {/* Template 저장 다이얼로그 */}
+      {/* Template save dialog */}
       {showSaveDialog && (
-        <Dialog title="Template 저장" onClose={() => setShowSaveDialog(false)}>
+        <Dialog title={t("k8s.template_save_title")} onClose={() => setShowSaveDialog(false)}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                이름 <span className="text-destructive">*</span>
+                {t("k8s.template_name")} <span className="text-destructive">*</span>
               </label>
               <input
                 value={saveName}
@@ -634,7 +634,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">설명 (선택)</label>
+              <label className="block text-sm font-medium mb-1">{t("k8s.template_desc")}</label>
               <textarea
                 value={saveDesc}
                 onChange={(e) => setSaveDesc(e.target.value)}
@@ -648,56 +648,56 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               disabled={!saveName.trim() || saveTemplateMutation.isPending}
               className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
             >
-              {saveTemplateMutation.isPending ? "저장 중..." : "저장"}
+              {saveTemplateMutation.isPending ? t("common.saving") : t("common.save")}
             </button>
           </div>
         </Dialog>
       )}
 
-      {/* 스펙 수정 다이얼로그 */}
+      {/* Hardware edit dialog */}
       {hardwareNode && (
-        <Dialog title={`${hardwareNode} 스펙 수정`} onClose={() => setHardwareNode(null)}>
+        <Dialog title={`${hardwareNode} ${t("node.hardware_edit")}`} onClose={() => setHardwareNode(null)}>
           <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">변경할 항목만 입력하세요. 빈 칸은 현재 값 유지.</p>
+            <p className="text-xs text-muted-foreground">{t("node.hardware_hint")}</p>
             <div>
-              <label className="block text-sm font-medium mb-1">CPU 코어 수</label>
+              <label className="block text-sm font-medium mb-1">{t("node.hardware_cpu")}</label>
               <input type="number" min={1} max={32} value={hwCpus}
                 onChange={(e) => setHwCpus(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm" placeholder="예: 2" />
+                className="w-full rounded-md border px-3 py-2 text-sm" placeholder={t("node.hardware_cpu_hint")} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">메모리</label>
+              <label className="block text-sm font-medium mb-1">{t("node.hardware_memory")}</label>
               <input value={hwMemory} onChange={(e) => setHwMemory(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm" placeholder="예: 4G" />
+                className="w-full rounded-md border px-3 py-2 text-sm" placeholder={t("node.hardware_memory_hint")} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">디스크 (증가만 가능)</label>
+              <label className="block text-sm font-medium mb-1">{t("node.hardware_disk")}</label>
               <input value={hwDisk} onChange={(e) => setHwDisk(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm" placeholder="예: 20G" />
+                className="w-full rounded-md border px-3 py-2 text-sm" placeholder={t("node.hardware_disk_hint")} />
             </div>
             <button
               onClick={() => setHardwareMutation.mutate()}
               disabled={(!hwCpus && !hwMemory && !hwDisk) || setHardwareMutation.isPending}
               className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
             >
-              {setHardwareMutation.isPending ? "적용 중..." : "적용"}
+              {setHardwareMutation.isPending ? t("common.applying") : t("common.apply")}
             </button>
           </div>
         </Dialog>
       )}
 
-      {/* 워커 추가 다이얼로그 */}
+      {/* Add worker dialog */}
       {showAddWorker && (
-        <Dialog title="워커 노드 추가" onClose={() => setShowAddWorker(false)}>
+        <Dialog title={t("cluster.add_worker")} onClose={() => setShowAddWorker(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">워커 수</label>
+              <label className="block text-sm font-medium mb-1">{t("cluster.worker_count")}</label>
               <input type="number" min={1} max={10} value={workerCount}
                 onChange={(e) => setWorkerCount(Number(e.target.value))}
                 className="w-24 rounded-md border px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">스펙</label>
+              <label className="block text-sm font-medium mb-1">{t("cluster.worker_spec")}</label>
               <select value={workerSpec} onChange={(e) => setWorkerSpec(e.target.value)}
                 className="w-full rounded-md border px-3 py-2 text-sm">
                 <option value="small">Small</option>
@@ -707,35 +707,35 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             </div>
             <button onClick={() => addWorkerMutation.mutate()} disabled={addWorkerMutation.isPending}
               className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60">
-              추가
+              {t("common.add")}
             </button>
           </div>
         </Dialog>
       )}
 
-      {/* TLS 다이얼로그 */}
+      {/* TLS dialog */}
       {showTls && (
-        <Dialog title="TLS SAN 설정" onClose={() => setShowTls(false)}>
+        <Dialog title={t("cluster.tls")} onClose={() => setShowTls(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">도메인 (선택)</label>
+              <label className="block text-sm font-medium mb-1">{t("cluster.tls_domain")}</label>
               <input value={tlsDomain} onChange={(e) => setTlsDomain(e.target.value)}
                 className="w-full rounded-md border px-3 py-2 text-sm" placeholder="k3s.example.com" />
             </div>
             <button onClick={() => tlsMutation.mutate()} disabled={tlsMutation.isPending}
               className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60">
-              적용
+              {tlsMutation.isPending ? t("common.applying") : t("common.apply")}
             </button>
           </div>
         </Dialog>
       )}
 
-      {/* 삭제 확인 다이얼로그 */}
+      {/* Delete confirm dialog */}
       {showDeleteDialog && (
-        <Dialog title="클러스터 삭제" onClose={() => setShowDeleteDialog(false)}>
+        <Dialog title={t("cluster.actions.delete")} onClose={() => setShowDeleteDialog(false)}>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              이 작업은 되돌릴 수 없습니다. 확인을 위해 클러스터 이름 <strong>{name}</strong>을 입력하세요.
+              {t("cluster.delete_irreversible")} <strong>{name}</strong>{t("cluster.delete_type_name")}
             </p>
             <input value={deleteInput} onChange={(e) => setDeleteInput(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-sm" placeholder={name} />
@@ -743,7 +743,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               onClick={() => deleteMutation.mutate()}
               disabled={deleteInput !== name || deleteMutation.isPending}
               className="w-full rounded-lg bg-destructive text-destructive-foreground py-2 text-sm hover:bg-destructive/90 disabled:opacity-40">
-              삭제
+              {t("common.delete")}
             </button>
           </div>
         </Dialog>

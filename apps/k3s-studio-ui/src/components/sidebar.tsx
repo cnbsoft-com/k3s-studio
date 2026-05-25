@@ -4,15 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Server, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "@/contexts/I18nContext";
 
 const navItems = [
-  { href: "/", label: "대시보드", icon: LayoutDashboard },
-  { href: "/servers", label: "서버", icon: Server },
+  { href: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/servers", labelKey: "nav.servers", icon: Server },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { t } = useTranslation();
 
   return (
     <aside
@@ -21,8 +23,9 @@ export function Sidebar() {
       }`}
     >
       <nav className="flex-1 py-4 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, labelKey, icon: Icon }) => {
           const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const label = t(labelKey);
           return (
             <Link
               key={href}
@@ -41,7 +44,7 @@ export function Sidebar() {
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="hidden md:flex absolute -right-3 top-6 w-6 h-6 items-center justify-center rounded-full border bg-background text-muted-foreground hover:text-foreground shadow-sm"
-        aria-label={collapsed ? "사이드바 열기" : "사이드바 닫기"}
+        aria-label={collapsed ? t("sidebar.open") : t("sidebar.close")}
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>

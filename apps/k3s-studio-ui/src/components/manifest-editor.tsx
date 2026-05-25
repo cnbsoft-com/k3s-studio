@@ -7,6 +7,7 @@ import {
   getManifestTemplates,
   deleteManifestTemplate,
 } from "@/lib/api";
+import { useTranslation } from "@/contexts/I18nContext";
 
 interface ManifestEditorProps {
   value: string;
@@ -26,6 +27,7 @@ export function ManifestEditor({
 }: ManifestEditorProps) {
   const [showTemplates, setShowTemplates] = useState(false);
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const { data: templates = [] } = useQuery({
     queryKey: ["manifest-templates", clusterName],
@@ -37,49 +39,49 @@ export function ManifestEditor({
     mutationFn: (id: number) => deleteManifestTemplate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["manifest-templates", clusterName] });
-      toast.success("Template 삭제 완료");
+      toast.success(t("k8s.template_delete_done"));
     },
-    onError: () => toast.error("삭제 실패"),
+    onError: () => toast.error(t("k8s.template_delete_failed")),
   });
 
   const isPending = applyPending || deletePending;
 
   const handleTemplateDelete = (e: React.MouseEvent, id: number, tmplName: string) => {
     e.stopPropagation();
-    if (!confirm(`"${tmplName}" Template을 삭제하시겠습니까?`)) return;
+    if (!confirm(t("k8s.template_delete_confirm", tmplName))) return;
     deleteMutation.mutate(id);
   };
 
   return (
     <div className="space-y-2">
-      {/* Template 불러오기 */}
+      {/* Load from template */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setShowTemplates((v) => !v)}
           className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
         >
-          Template에서 불러오기 {showTemplates ? "▲" : "▾"}
+          {t("k8s.template_load")} {showTemplates ? "▲" : "▾"}
         </button>
-        <span className="text-xs text-muted-foreground">{templates.length}개</span>
+        <span className="text-xs text-muted-foreground">{templates.length}</span>
       </div>
 
       {showTemplates && templates.length > 0 && (
         <div className="rounded-md border divide-y text-sm max-h-48 overflow-y-auto">
-          {templates.map((t) => (
-            <div key={t.id} className="flex items-center px-3 py-2 hover:bg-muted/50 gap-2">
+          {templates.map((tmpl) => (
+            <div key={tmpl.id} className="flex items-center px-3 py-2 hover:bg-muted/50 gap-2">
               <button
                 className="flex-1 text-left"
-                onClick={() => { onChange(t.yamlContent); setShowTemplates(false); }}
+                onClick={() => { onChange(tmpl.yamlContent); setShowTemplates(false); }}
               >
-                <span className="font-medium">{t.name}</span>
-                {t.description && (
-                  <span className="ml-2 text-xs text-muted-foreground">{t.description}</span>
+                <span className="font-medium">{tmpl.name}</span>
+                {tmpl.description && (
+                  <span className="ml-2 text-xs text-muted-foreground">{tmpl.description}</span>
                 )}
               </button>
               <button
-                onClick={(e) => handleTemplateDelete(e, t.id, t.name)}
+                onClick={(e) => handleTemplateDelete(e, tmpl.id, tmpl.name)}
                 className="text-muted-foreground hover:text-destructive text-lg leading-none px-1"
-                title="삭제"
+                title={t("common.delete")}
               >
                 ×
               </button>
@@ -89,7 +91,7 @@ export function ManifestEditor({
       )}
 
       {showTemplates && templates.length === 0 && (
-        <p className="text-xs text-muted-foreground px-1">저장된 Template이 없습니다.</p>
+        <p className="text-xs text-muted-foreground px-1">{t("k8s.template_none")}</p>
       )}
 
       {/* Editor */}
@@ -108,14 +110,14 @@ export function ManifestEditor({
           disabled={!value.trim() || isPending}
           className="rounded-lg border px-4 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
         >
-          {applyPending ? "적용 중..." : "Apply"}
+          {applyPending ? t("common.applying") : "Apply"}
         </button>
         <button
           onClick={() => onDelete(value)}
           disabled={!value.trim() || isPending}
           className="rounded-lg border border-destructive text-destructive px-4 py-1.5 text-sm hover:bg-destructive/10 disabled:opacity-50"
         >
-          {deletePending ? "삭제 중..." : "Delete"}
+          {deletePending ? t("common.deleting") : "Delete"}
         </button>
         {onSaveTemplate && (
           <button
@@ -123,7 +125,7 @@ export function ManifestEditor({
             disabled={!value.trim()}
             className="ml-auto rounded-lg border px-4 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
-            현재 내용을 Template 저장
+            {t("k8s.save_current")}
           </button>
         )}
       </div>

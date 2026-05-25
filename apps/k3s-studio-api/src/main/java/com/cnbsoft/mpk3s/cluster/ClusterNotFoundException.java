@@ -1,7 +1,9 @@
 package com.cnbsoft.mpk3s.cluster;
 
-public class ClusterNotFoundException extends RuntimeException {
+import com.cnbsoft.mpk3s.common.AppException;
+
+public class ClusterNotFoundException extends AppException {
     public ClusterNotFoundException(String name) {
-        super("Cluster not found: " + name);
+        super("error.cluster_not_found", name);
     }
 }

@@ -1,5 +1,6 @@
 package com.cnbsoft.mpk3s.cluster;
 
+import com.cnbsoft.mpk3s.common.AppException;
 import com.cnbsoft.mpk3s.job.Job;
 import com.cnbsoft.mpk3s.job.JobService;
 import com.cnbsoft.mpk3s.job.JobType;
@@ -77,7 +78,7 @@ public class ClusterService {
     @Transactional
     public UUID createCluster(ClusterRequest req) {
         if (clusterRepository.existsByName(req.getName())) {
-            throw new IllegalArgumentException("Cluster already exists: " + req.getName());
+            throw new AppException("error.cluster_exists", req.getName());
         }
 
         Cluster cluster = new Cluster();
@@ -380,7 +381,7 @@ public class ClusterService {
         MultipassService svc = serviceFor(cluster);
         MultipassNode node = svc.getNode(nodeName);
         if (!"Stopped".equalsIgnoreCase(node.getState())) {
-            throw new IllegalStateException("노드가 중지 상태가 아닙니다. 먼저 노드를 중지하세요. (현재: " + node.getState() + ")");
+            throw new AppException("error.node_not_stopped", node.getState());
         }
         svc.setNodeHardware(nodeName, req.cpus(), req.memory(), req.disk());
     }

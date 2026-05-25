@@ -1,7 +1,9 @@
 package com.cnbsoft.mpk3s.server;
 
-public class ServerNotFoundException extends RuntimeException {
+import com.cnbsoft.mpk3s.common.AppException;
+
+public class ServerNotFoundException extends AppException {
     public ServerNotFoundException(Long id) {
-        super("Server not found: " + id);
+        super("error.server_not_found", id);
     }
 }

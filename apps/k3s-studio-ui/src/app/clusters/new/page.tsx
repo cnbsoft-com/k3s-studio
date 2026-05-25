@@ -13,25 +13,11 @@ import { toast } from "sonner";
 import { ChevronRight, ChevronLeft, Server } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-
-const SPECS = [
-  { value: "small",  label: "Small  (2 CPU / 2G 메모리 / 10G 디스크)" },
-  { value: "medium", label: "Medium (4 CPU / 4G 메모리 / 20G 디스크)" },
-  { value: "large",  label: "Large  (8 CPU / 8G 메모리 / 40G 디스크)" },
-  { value: "custom", label: "Custom" },
-];
-
-const K3S_COMPONENTS = [
-  { key: "traefik",       label: "Traefik (인그레스 컨트롤러)" },
-  { key: "flannel",       label: "Flannel (CNI)" },
-  { key: "servicelb",     label: "ServiceLB (로드밸런서)" },
-  { key: "localStorage",  label: "Local Storage" },
-  { key: "metricsServer", label: "Metrics Server" },
-];
+import { useTranslation } from "@/contexts/I18nContext";
 
 const schema = z.object({
   serverId: z.number().nullable().optional(),
-  name: z.string().min(2).max(50).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, "영문 소문자, 숫자, 하이픈만 허용"),
+  name: z.string().min(2).max(50).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/),
   masterSpec: z.string(),
   masterCpus: z.number().optional(),
   masterMemory: z.string().optional(),
@@ -47,11 +33,34 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-const STEPS = ["서버 선택", "기본 정보", "마스터 스펙", "워커 노드", "이미지 & 컴포넌트", "확인"];
-
 function NewClusterForm() {
   const searchParams = useSearchParams();
   const defaultServerId = searchParams.get("serverId") ? parseInt(searchParams.get("serverId")!) : null;
+  const { t } = useTranslation();
+
+  const SPECS = [
+    { value: "small",  label: t("cluster.spec.small") },
+    { value: "medium", label: t("cluster.spec.medium") },
+    { value: "large",  label: t("cluster.spec.large") },
+    { value: "custom", label: t("cluster.spec.custom") },
+  ];
+
+  const K3S_COMPONENTS = [
+    { key: "traefik",       label: t("cluster.component.traefik") },
+    { key: "flannel",       label: t("cluster.component.flannel") },
+    { key: "servicelb",     label: t("cluster.component.servicelb") },
+    { key: "localStorage",  label: t("cluster.component.localStorage") },
+    { key: "metricsServer", label: t("cluster.component.metricsServer") },
+  ];
+
+  const STEPS = [
+    t("cluster.step.server"),
+    t("cluster.step.info"),
+    t("cluster.step.master"),
+    t("cluster.step.worker"),
+    t("cluster.step.image"),
+    t("cluster.step.review"),
+  ];
 
   const [step, setStep] = useState(defaultServerId !== null ? 1 : 0);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -76,9 +85,9 @@ function NewClusterForm() {
     mutationFn: (data: CreateClusterRequest) => createCluster(data),
     onSuccess: (res) => {
       setJobId(res.jobId);
-      toast.success("클러스터 생성이 시작되었습니다.");
+      toast.success(t("cluster.create_started"));
     },
-    onError: () => toast.error("클러스터 생성 요청 실패"),
+    onError: () => toast.error(t("cluster.create_failed")),
   });
 
   const values = form.watch();
@@ -89,7 +98,7 @@ function NewClusterForm() {
   if (jobId) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
-        <h1 className="text-2xl font-bold">클러스터 생성 중</h1>
+        <h1 className="text-2xl font-bold">{t("cluster.creating_title")}</h1>
         <JobLogViewer jobId={jobId} redirectOnSuccess="/" />
       </div>
     );
@@ -98,8 +107,8 @@ function NewClusterForm() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="space-y-1">
-        <Breadcrumb items={[{ label: "대시보드", href: "/" }, { label: "새 클러스터" }]} />
-        <h1 className="text-2xl font-bold">새 클러스터 생성</h1>
+        <Breadcrumb items={[{ label: t("dashboard.title"), href: "/" }, { label: t("cluster.new") }]} />
+        <h1 className="text-2xl font-bold">{t("cluster.create")}</h1>
       </div>
 
       {/* Stepper */}
@@ -137,11 +146,11 @@ function NewClusterForm() {
       <p className="sm:hidden text-sm text-muted-foreground -mt-2">{STEPS[step]}</p>
 
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        {/* Step 0: 서버 선택 */}
+        {/* Step 0: Server selection */}
         {step === 0 && (
           <div className="space-y-3">
             {servers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">등록된 서버가 없습니다.</p>
+              <p className="text-sm text-muted-foreground">{t("server.no_servers")}</p>
             ) : (
               servers.map((server) => (
                 <label key={server.id}
@@ -172,30 +181,30 @@ function NewClusterForm() {
           </div>
         )}
 
-        {/* Step 1: 기본 정보 */}
+        {/* Step 1: Basic info */}
         {step === 1 && (
           <div className="space-y-4">
             {selectedServer && (
               <div className="text-sm text-muted-foreground bg-muted rounded-lg px-3 py-2">
-                서버: <span className="font-medium text-foreground">{selectedServer.name}</span>
+                {t("cluster.server")}: <span className="font-medium text-foreground">{selectedServer.name}</span>
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium mb-1">클러스터 이름</label>
+              <label className="block text-sm font-medium mb-1">{t("cluster.name")}</label>
               <input
                 {...form.register("name")}
                 className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background"
                 placeholder="my-cluster"
               />
               {form.formState.errors.name && (
-                <p className="text-xs text-destructive mt-1">{form.formState.errors.name.message}</p>
+                <p className="text-xs text-destructive mt-1">{t("cluster.name_validation")}</p>
               )}
-              <p className="text-xs text-muted-foreground mt-1">영문 소문자, 숫자, 하이픈 사용 가능</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("cluster.name_hint")}</p>
             </div>
           </div>
         )}
 
-        {/* Step 2: 마스터 스펙 */}
+        {/* Step 2: Master spec */}
         {step === 2 && (
           <div className="space-y-3">
             {SPECS.map((s) => (
@@ -212,12 +221,12 @@ function NewClusterForm() {
                     className="w-full rounded border px-2 py-1 text-sm bg-background" placeholder="2" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1">메모리</label>
+                  <label className="block text-xs font-medium mb-1">{t("cluster.memory")}</label>
                   <input {...form.register("masterMemory")}
                     className="w-full rounded border px-2 py-1 text-sm bg-background" placeholder="2G" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1">디스크</label>
+                  <label className="block text-xs font-medium mb-1">{t("cluster.disk")}</label>
                   <input {...form.register("masterDisk")}
                     className="w-full rounded border px-2 py-1 text-sm bg-background" placeholder="10G" />
                 </div>
@@ -226,11 +235,11 @@ function NewClusterForm() {
           </div>
         )}
 
-        {/* Step 3: 워커 노드 */}
+        {/* Step 3: Worker nodes */}
         {step === 3 && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">워커 수</label>
+              <label className="block text-sm font-medium mb-1">{t("cluster.worker_count")}</label>
               <input type="number" min={0} max={20}
                 {...form.register("workerCount", { valueAsNumber: true })}
                 className="w-32 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background"
@@ -238,7 +247,7 @@ function NewClusterForm() {
             </div>
             {values.workerCount > 0 && (
               <div className="space-y-2">
-                <label className="block text-sm font-medium">워커 스펙</label>
+                <label className="block text-sm font-medium">{t("cluster.worker_spec")}</label>
                 {SPECS.map((s) => (
                   <label key={s.value} className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/50">
                     <input type="radio" value={s.value} {...form.register("workerSpec")} className="accent-primary" />
@@ -253,12 +262,12 @@ function NewClusterForm() {
                         className="w-full rounded border px-2 py-1 text-sm bg-background" placeholder="2" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1">메모리</label>
+                      <label className="block text-xs font-medium mb-1">{t("cluster.memory")}</label>
                       <input {...form.register("workerMemory")}
                         className="w-full rounded border px-2 py-1 text-sm bg-background" placeholder="2G" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1">디스크</label>
+                      <label className="block text-xs font-medium mb-1">{t("cluster.disk")}</label>
                       <input {...form.register("workerDisk")}
                         className="w-full rounded border px-2 py-1 text-sm bg-background" placeholder="10G" />
                     </div>
@@ -269,21 +278,21 @@ function NewClusterForm() {
           </div>
         )}
 
-        {/* Step 4: 이미지 & 컴포넌트 */}
+        {/* Step 4: Image & components */}
         {step === 4 && (
           <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium mb-1">Ubuntu 이미지</label>
+              <label className="block text-sm font-medium mb-1">{t("cluster.ubuntu_image")}</label>
               <select {...form.register("ubuntuImage")}
                 className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background">
-                <option value="">-- 선택 --</option>
+                <option value="">{t("cluster.image_select")}</option>
                 {images.map((img) => (
                   <option key={img} value={img}>{img}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">K3s 컴포넌트</label>
+              <label className="block text-sm font-medium mb-2">{t("cluster.k3s_components")}</label>
               <div className="space-y-2">
                 {K3S_COMPONENTS.map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer">
@@ -300,17 +309,17 @@ function NewClusterForm() {
           </div>
         )}
 
-        {/* Step 5: 확인 */}
+        {/* Step 5: Review */}
         {step === 5 && (
           <div className="rounded-lg border p-5 space-y-3 text-sm">
-            <h3 className="font-medium text-base mb-2">설정 요약</h3>
-            <Row label="서버" value={selectedServer?.name ?? "미선택"} />
-            <Row label="클러스터 이름" value={values.name} />
-            <Row label="마스터 스펙" value={values.masterSpec} />
-            <Row label="워커 수" value={String(values.workerCount)} />
-            <Row label="워커 스펙" value={values.workerSpec} />
-            <Row label="이미지" value={values.ubuntuImage} />
-            <Row label="활성 컴포넌트"
+            <h3 className="font-medium text-base mb-2">{t("cluster.summary")}</h3>
+            <Row label={t("cluster.server")} value={selectedServer?.name ?? t("cluster.unselected")} />
+            <Row label={t("cluster.name")} value={values.name} />
+            <Row label={t("cluster.master_spec")} value={values.masterSpec} />
+            <Row label={t("cluster.worker_count")} value={String(values.workerCount)} />
+            <Row label={t("cluster.worker_spec")} value={values.workerSpec} />
+            <Row label={t("cluster.image")} value={values.ubuntuImage} />
+            <Row label={t("cluster.k3s_components")}
               value={K3S_COMPONENTS.filter((c) => values.options?.[c.key]).map((c) => c.label).join(", ")} />
           </div>
         )}
@@ -319,17 +328,17 @@ function NewClusterForm() {
         <div className="flex justify-between pt-6">
           <button type="button" onClick={() => setStep((s) => s - 1)} disabled={step === 0}
             className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm disabled:opacity-40 hover:bg-muted transition-colors">
-            <ChevronLeft className="h-4 w-4" /> 이전
+            <ChevronLeft className="h-4 w-4" /> {t("common.previous")}
           </button>
           {step < STEPS.length - 1 ? (
             <button type="button" onClick={() => setStep((s) => s + 1)}
               className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm hover:bg-primary/90 transition-colors">
-              다음 <ChevronRight className="h-4 w-4" />
+              {t("common.next")} <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
             <button type="submit" disabled={mutation.isPending}
               className="rounded-lg bg-primary text-primary-foreground px-6 py-2 text-sm hover:bg-primary/90 disabled:opacity-60 transition-colors">
-              {mutation.isPending ? "생성 중..." : "클러스터 생성"}
+              {mutation.isPending ? t("common.creating") : t("cluster.create")}
             </button>
           )}
         </div>
