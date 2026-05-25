@@ -31,13 +31,13 @@ public class SshMultipassExecutor implements MultipassExecutor {
 
     @Override
     public String execMultipass(String... args) throws IOException, InterruptedException {
-        return execRaw("multipass " + String.join(" ", quoteArgs(args)));
+        return execRaw("PATH=$PATH:/snap/bin:/usr/local/bin multipass " + String.join(" ", quoteArgs(args)));
     }
 
     @Override
     public void execMultipassStreaming(Consumer<String> logConsumer, String... args)
             throws IOException, InterruptedException {
-        execRawStreaming("multipass " + String.join(" ", quoteArgs(args)), logConsumer);
+        execRawStreaming("PATH=$PATH:/snap/bin:/usr/local/bin multipass " + String.join(" ", quoteArgs(args)), logConsumer);
     }
 
     @Override

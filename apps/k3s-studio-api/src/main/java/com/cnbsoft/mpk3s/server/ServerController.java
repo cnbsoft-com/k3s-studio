@@ -62,7 +62,7 @@ public class ServerController {
     }
 
     @GetMapping("/{id}/discover-clusters")
-    public List<DiscoveredCluster> discoverClusters(@PathVariable Long id) {
+    public List<DiscoveredCluster> discoverClusters(@PathVariable Long id) throws Exception {
         return clusterService.discoverClusters(id);
     }
 }
