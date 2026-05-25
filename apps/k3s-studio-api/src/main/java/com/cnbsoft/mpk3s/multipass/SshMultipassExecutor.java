@@ -88,6 +88,9 @@ public class SshMultipassExecutor implements MultipassExecutor {
     }
 
     private Path writeTempKey() throws IOException {
+        if (privateKeyPem == null) {
+            throw new IOException("SSH private key not configured");
+        }
         Path tmpKey = Files.createTempFile("mpk3s-key-", null);
         Files.writeString(tmpKey, privateKeyPem);
         try {

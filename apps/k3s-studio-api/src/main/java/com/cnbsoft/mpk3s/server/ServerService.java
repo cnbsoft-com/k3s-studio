@@ -104,8 +104,11 @@ public class ServerService {
         if (server.isLocal()) {
             return Map.of("success", true, "message", "로컬 서버 (연결 불필요)");
         }
+        String decryptedKey = encryptionService.decrypt(server.getPrivateKey());
+        if (decryptedKey == null) {
+            return Map.of("success", false, "message", "SSH Private Key가 등록되지 않았습니다.");
+        }
         try {
-            String decryptedKey = encryptionService.decrypt(server.getPrivateKey());
             SshMultipassExecutor exec = new SshMultipassExecutor(
                     server.getHost(), server.getPort(), server.getUsername(), decryptedKey);
             exec.execRaw("echo ok");
@@ -113,7 +116,8 @@ public class ServerService {
             return Map.of("success", true, "message", "SSH 연결 성공");
         } catch (Exception e) {
             updateStatus(server, ServerStatus.UNREACHABLE);
-            return Map.of("success", false, "message", String.valueOf(e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            return Map.of("success", false, "message", msg);
         }
     }
 
