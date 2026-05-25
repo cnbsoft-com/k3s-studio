@@ -234,5 +234,48 @@ spec:
   - port: 8080
     targetPort: 8080
     nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k3s-studio-mcp-bridge
+  namespace: ${namespace}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k3s-studio-mcp-bridge
+  template:
+    metadata:
+      labels:
+        app: k3s-studio-mcp-bridge
+    spec:
+      hostNetwork: true
+      containers:
+      - name: mcp-bridge
+        image: cnbsoft/k3s-studio-mcp:latest
+        env:
+        - name: MCP_MODE
+          value: http
+        - name: MCP_HTTP_PORT
+          value: "3001"
+        - name: K3S_STUDIO_API_URL
+          value: http://localhost:9090
+        - name: OLLAMA_URL
+          value: http://ollama.${namespace}.svc.cluster.local:11434
+        ports:
+        - containerPort: 3001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k3s-studio-mcp-bridge
+  namespace: ${namespace}
+spec:
+  selector:
+    app: k3s-studio-mcp-bridge
+  ports:
+  - port: 3001
+    targetPort: 3001
 `.trim();
 }

@@ -224,6 +224,41 @@ ${result.log}`
       };
     }
   );
+  server2.tool(
+    "restart_cluster",
+    "Restart a k3s cluster (all its VMs).",
+    {
+      name: import_zod.z.string().describe("Cluster name")
+    },
+    async ({ name }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/restart`);
+      return { content: [{ type: "text", text: `Cluster '${name}' restart initiated.` }] };
+    }
+  );
+  server2.tool(
+    "suspend_cluster",
+    "Suspend a k3s cluster (saves VM state to disk, faster resume than stop).",
+    {
+      name: import_zod.z.string().describe("Cluster name")
+    },
+    async ({ name }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/suspend`);
+      return { content: [{ type: "text", text: `Cluster '${name}' suspended.` }] };
+    }
+  );
+  server2.tool(
+    "get_kubeconfig",
+    "Download the kubeconfig file for a cluster so you can run kubectl commands against it.",
+    {
+      name: import_zod.z.string().describe("Cluster name")
+    },
+    async ({ name }) => {
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/kubeconfig`, {
+        responseType: "text"
+      });
+      return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data) }] };
+    }
+  );
 }
 
 // src/tools/node.ts
@@ -294,6 +329,76 @@ ${result.log}`
         ],
         isError: !result.success
       };
+    }
+  );
+  server2.tool(
+    "start_node",
+    "Start a specific VM node in a cluster.",
+    {
+      name: import_zod2.z.string().describe("Cluster name"),
+      nodeName: import_zod2.z.string().describe("Node VM name (e.g. mycluster-master, mycluster-worker1)")
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/start`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' started.` }] };
+    }
+  );
+  server2.tool(
+    "stop_node",
+    "Stop a specific VM node in a cluster (data preserved).",
+    {
+      name: import_zod2.z.string().describe("Cluster name"),
+      nodeName: import_zod2.z.string().describe("Node VM name")
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/stop`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' stopped.` }] };
+    }
+  );
+  server2.tool(
+    "restart_node",
+    "Restart a specific VM node in a cluster.",
+    {
+      name: import_zod2.z.string().describe("Cluster name"),
+      nodeName: import_zod2.z.string().describe("Node VM name")
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/restart`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' restarted.` }] };
+    }
+  );
+  server2.tool(
+    "suspend_node",
+    "Suspend a specific VM node (saves state to disk).",
+    {
+      name: import_zod2.z.string().describe("Cluster name"),
+      nodeName: import_zod2.z.string().describe("Node VM name")
+    },
+    async ({ name, nodeName }) => {
+      await http.post(`/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/suspend`);
+      return { content: [{ type: "text", text: `Node '${nodeName}' suspended.` }] };
+    }
+  );
+  server2.tool(
+    "update_node_hardware",
+    "Change CPU and memory allocation for a VM node. Node must be stopped first.",
+    {
+      name: import_zod2.z.string().describe("Cluster name"),
+      nodeName: import_zod2.z.string().describe("Node VM name"),
+      cpus: import_zod2.z.number().int().min(1).max(16).optional().describe("Number of CPUs"),
+      memoryGb: import_zod2.z.number().int().min(1).max(64).optional().describe("Memory in GB"),
+      diskGb: import_zod2.z.number().int().min(10).max(500).optional().describe("Disk size in GB")
+    },
+    async ({ name, nodeName, cpus, memoryGb, diskGb }) => {
+      const body = {};
+      if (cpus !== void 0) body.cpus = cpus;
+      if (memoryGb !== void 0) body.memory = `${memoryGb}G`;
+      if (diskGb !== void 0) body.disk = `${diskGb}G`;
+      await http.patch(
+        `/api/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/hardware`,
+        body
+      );
+      return { content: [{ type: "text", text: `Node '${nodeName}' hardware updated.` }] };
     }
   );
 }
@@ -424,6 +529,125 @@ function registerK8sTools(server2) {
       };
     }
   );
+  server2.tool(
+    "list_k8s_namespaces",
+    "List all Kubernetes namespaces in a cluster.",
+    {
+      name: import_zod3.z.string().describe("Cluster name")
+    },
+    async ({ name }) => {
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/k8s/namespaces`);
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: "No namespaces found." }] };
+      }
+      return { content: [{ type: "text", text: data.map((ns) => `\u2022 ${ns}`).join("\n") }] };
+    }
+  );
+  server2.tool(
+    "list_k8s_statefulsets",
+    "List Kubernetes StatefulSets in a cluster.",
+    {
+      name: import_zod3.z.string().describe("Cluster name"),
+      namespace: import_zod3.z.string().optional().describe("Namespace (default: all namespaces)")
+    },
+    async ({ name, namespace }) => {
+      const params = namespace ? { namespace } : {};
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/k8s/statefulsets`, { params });
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: "No StatefulSets found." }] };
+      }
+      const rows = data.map(
+        (s) => `\u2022 ${s.namespace}/${s.name} ready=${s.readyReplicas}/${s.replicas}`
+      );
+      return { content: [{ type: "text", text: rows.join("\n") }] };
+    }
+  );
+  server2.tool(
+    "list_k8s_ingresses",
+    "List Kubernetes Ingresses in a cluster.",
+    {
+      name: import_zod3.z.string().describe("Cluster name"),
+      namespace: import_zod3.z.string().optional().describe("Namespace (default: all namespaces)")
+    },
+    async ({ name, namespace }) => {
+      const params = namespace ? { namespace } : {};
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/k8s/ingresses`, { params });
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: "No Ingresses found." }] };
+      }
+      const rows = data.map(
+        (i) => `\u2022 ${i.namespace}/${i.name} host=${i.host ?? "\u2014"} paths=${(i.paths ?? []).join(", ")}`
+      );
+      return { content: [{ type: "text", text: rows.join("\n") }] };
+    }
+  );
+  server2.tool(
+    "list_k8s_secrets",
+    "List Kubernetes Secrets in a cluster (names and types only \u2014 values are not returned).",
+    {
+      name: import_zod3.z.string().describe("Cluster name"),
+      namespace: import_zod3.z.string().optional().describe("Namespace (default: all namespaces)")
+    },
+    async ({ name, namespace }) => {
+      const params = namespace ? { namespace } : {};
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/k8s/secrets`, { params });
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: "No Secrets found." }] };
+      }
+      const rows = data.map((s) => `\u2022 ${s.namespace}/${s.name} type=${s.type}`);
+      return { content: [{ type: "text", text: rows.join("\n") }] };
+    }
+  );
+  server2.tool(
+    "list_k8s_configmaps",
+    "List Kubernetes ConfigMaps in a cluster.",
+    {
+      name: import_zod3.z.string().describe("Cluster name"),
+      namespace: import_zod3.z.string().optional().describe("Namespace (default: all namespaces)")
+    },
+    async ({ name, namespace }) => {
+      const params = namespace ? { namespace } : {};
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/k8s/configmaps`, { params });
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: "No ConfigMaps found." }] };
+      }
+      const rows = data.map((c) => `\u2022 ${c.namespace}/${c.name} keys=${(c.keys ?? []).join(", ")}`);
+      return { content: [{ type: "text", text: rows.join("\n") }] };
+    }
+  );
+  server2.tool(
+    "get_resource_manifest",
+    "Get the raw YAML manifest of any Kubernetes resource (equivalent to kubectl get -o yaml).",
+    {
+      name: import_zod3.z.string().describe("Cluster name"),
+      type: import_zod3.z.string().describe("Resource type: pod, deployment, service, statefulset, ingress, secret, configmap"),
+      namespace: import_zod3.z.string().describe("Namespace the resource is in"),
+      resourceName: import_zod3.z.string().describe("Resource name")
+    },
+    async ({ name, type, namespace, resourceName }) => {
+      const { data } = await http.get(
+        `/api/clusters/${encodeURIComponent(name)}/k8s/${encodeURIComponent(type)}/${encodeURIComponent(namespace)}/${encodeURIComponent(resourceName)}/manifest`
+      );
+      return { content: [{ type: "text", text: data.yaml ?? JSON.stringify(data) }] };
+    }
+  );
+  server2.tool(
+    "list_apply_history",
+    "List the history of kubectl apply operations performed on a cluster via k3s-studio.",
+    {
+      name: import_zod3.z.string().describe("Cluster name")
+    },
+    async ({ name }) => {
+      const { data } = await http.get(`/api/clusters/${encodeURIComponent(name)}/k8s/apply-history`);
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: "No apply history found." }] };
+      }
+      const rows = data.map(
+        (h) => `\u2022 [${h.appliedAt}] ${h.action ?? "apply"} \u2014 ${h.summary ?? h.yaml?.slice(0, 80)}`
+      );
+      return { content: [{ type: "text", text: rows.join("\n") }] };
+    }
+  );
 }
 
 // src/tools/server.ts
@@ -464,6 +688,133 @@ ${data.log ?? "(no log yet)"}`
           }
         ]
       };
+    }
+  );
+  server2.tool(
+    "register_server",
+    "Register a new remote server so k3s-studio can manage K3s clusters on it via SSH.",
+    {
+      name: import_zod4.z.string().describe("Display name for this server"),
+      host: import_zod4.z.string().describe("Hostname or IP address"),
+      port: import_zod4.z.number().int().min(1).max(65535).default(22).describe("SSH port"),
+      username: import_zod4.z.string().describe("SSH username"),
+      password: import_zod4.z.string().optional().describe("SSH password (leave empty if using key auth)"),
+      privateKey: import_zod4.z.string().optional().describe("SSH private key content (PEM format)")
+    },
+    async ({ name, host, port, username, password, privateKey }) => {
+      const body = { name, host, port, username };
+      if (password) body.password = password;
+      if (privateKey) body.privateKey = privateKey;
+      const { data } = await http.post("/api/servers", body);
+      return { content: [{ type: "text", text: `Server '${name}' registered with ID ${data.id}.` }] };
+    }
+  );
+  server2.tool(
+    "get_server",
+    "Get details of a registered remote server.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID")
+    },
+    async ({ id }) => {
+      const { data } = await http.get(`/api/servers/${id}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+  server2.tool(
+    "update_server",
+    "Update connection settings for a registered remote server.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID"),
+      name: import_zod4.z.string().optional().describe("New display name"),
+      host: import_zod4.z.string().optional().describe("New hostname or IP"),
+      port: import_zod4.z.number().int().min(1).max(65535).optional().describe("New SSH port"),
+      username: import_zod4.z.string().optional().describe("New SSH username"),
+      password: import_zod4.z.string().optional().describe("New SSH password"),
+      privateKey: import_zod4.z.string().optional().describe("New SSH private key (PEM format)")
+    },
+    async ({ id, ...fields }) => {
+      const body = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== void 0));
+      const { data } = await http.put(`/api/servers/${id}`, body);
+      return { content: [{ type: "text", text: `Server ${id} updated.` }] };
+    }
+  );
+  server2.tool(
+    "delete_server",
+    "\u26A0\uFE0F Remove a remote server from k3s-studio. Clusters on this server are NOT deleted.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID to remove")
+    },
+    async ({ id }) => {
+      await http.delete(`/api/servers/${id}`);
+      return { content: [{ type: "text", text: `Server ${id} removed.` }] };
+    }
+  );
+  server2.tool(
+    "test_server_connection",
+    "Test SSH connectivity to a registered remote server.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID")
+    },
+    async ({ id }) => {
+      const { data } = await http.post(`/api/servers/${id}/test`);
+      const ok = data.success ?? data.connected ?? true;
+      return {
+        content: [
+          {
+            type: "text",
+            text: ok ? `Server ${id}: SSH connection OK.` : `Server ${id}: SSH connection FAILED. ${data.message ?? ""}`
+          }
+        ]
+      };
+    }
+  );
+  server2.tool(
+    "check_server_multipass",
+    "Check if Multipass is installed and running on a remote server.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID")
+    },
+    async ({ id }) => {
+      const { data } = await http.get(`/api/servers/${id}/multipass`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+  server2.tool(
+    "install_multipass_on_server",
+    "Install Multipass on a remote server. The server must be reachable via SSH.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID")
+    },
+    async ({ id }) => {
+      const { data } = await http.post(`/api/servers/${id}/multipass/install`);
+      const jobId = data.jobId;
+      const result = await waitForJob(jobId);
+      return {
+        content: [
+          {
+            type: "text",
+            text: result.success ? `Multipass installed on server ${id}.` : `Multipass installation failed on server ${id}.
+${result.log}`
+          }
+        ],
+        isError: !result.success
+      };
+    }
+  );
+  server2.tool(
+    "discover_server_clusters",
+    "Scan a remote server for existing K3s clusters not yet registered in k3s-studio.",
+    {
+      id: import_zod4.z.number().int().describe("Server ID")
+    },
+    async ({ id }) => {
+      const { data } = await http.get(`/api/servers/${id}/discover-clusters`);
+      if (!data || data.length === 0) {
+        return { content: [{ type: "text", text: `No unregistered clusters found on server ${id}.` }] };
+      }
+      const rows = data.map((c) => `\u2022 ${c.name} [${c.status ?? "unknown"}]`);
+      return { content: [{ type: "text", text: `Discovered clusters on server ${id}:
+${rows.join("\n")}` }] };
     }
   );
 }
@@ -703,6 +1054,49 @@ spec:
   - port: 8080
     targetPort: 8080
     nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k3s-studio-mcp-bridge
+  namespace: ${namespace}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k3s-studio-mcp-bridge
+  template:
+    metadata:
+      labels:
+        app: k3s-studio-mcp-bridge
+    spec:
+      hostNetwork: true
+      containers:
+      - name: mcp-bridge
+        image: cnbsoft/k3s-studio-mcp:latest
+        env:
+        - name: MCP_MODE
+          value: http
+        - name: MCP_HTTP_PORT
+          value: "3001"
+        - name: K3S_STUDIO_API_URL
+          value: http://localhost:9090
+        - name: OLLAMA_URL
+          value: http://ollama.${namespace}.svc.cluster.local:11434
+        ports:
+        - containerPort: 3001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k3s-studio-mcp-bridge
+  namespace: ${namespace}
+spec:
+  selector:
+    app: k3s-studio-mcp-bridge
+  ports:
+  - port: 3001
+    targetPort: 3001
 `.trim();
 }
 
