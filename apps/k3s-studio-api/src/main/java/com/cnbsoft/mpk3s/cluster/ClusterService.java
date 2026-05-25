@@ -15,6 +15,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -274,36 +275,31 @@ public class ClusterService {
      * 서버의 Multipass에서 *-master 패턴 인스턴스를 찾아 미등록 클러스터 목록 반환.
      * 이미 DB에 등록된 클러스터는 제외.
      */
-    public List<DiscoveredCluster> discoverClusters(Long serverId) {
-        try {
-            MultipassService svc = serviceForServerId(serverId);
-            List<MultipassNode> nodes = svc.listNodes();
+    public List<DiscoveredCluster> discoverClusters(Long serverId) throws IOException, InterruptedException {
+        MultipassService svc = serviceForServerId(serverId);
+        List<MultipassNode> nodes = svc.listNodes();
 
-            Set<String> masterNames = new HashSet<>();
-            for (MultipassNode n : nodes) {
-                if (n.getName().endsWith("-master")) {
-                    masterNames.add(n.getName().substring(0, n.getName().length() - 7));
-                }
+        Set<String> masterNames = new HashSet<>();
+        for (MultipassNode n : nodes) {
+            if (n.getName().endsWith("-master")) {
+                masterNames.add(n.getName().substring(0, n.getName().length() - 7));
             }
-
-            return masterNames.stream()
-                    .filter(name -> !clusterRepository.existsByName(name))
-                    .map(name -> {
-                        int workers = (int) nodes.stream()
-                                .filter(n -> n.getName().matches(name + "-worker\\d+"))
-                                .count();
-                        String masterIp = nodes.stream()
-                                .filter(n -> n.getName().equals(name + "-master"))
-                                .findFirst()
-                                .map(MultipassNode::getIpv4)
-                                .orElse("");
-                        return new DiscoveredCluster(name, workers, masterIp);
-                    })
-                    .toList();
-        } catch (Exception e) {
-            log.warn("클러스터 감지 실패 (serverId={}): {}", serverId, e.getMessage());
-            return List.of();
         }
+
+        return masterNames.stream()
+                .filter(name -> !clusterRepository.existsByName(name))
+                .map(name -> {
+                    int workers = (int) nodes.stream()
+                            .filter(n -> n.getName().matches(name + "-worker\\d+"))
+                            .count();
+                    String masterIp = nodes.stream()
+                            .filter(n -> n.getName().equals(name + "-master"))
+                            .findFirst()
+                            .map(MultipassNode::getIpv4)
+                            .orElse("");
+                    return new DiscoveredCluster(name, workers, masterIp);
+                })
+                .toList();
     }
 
     /**
