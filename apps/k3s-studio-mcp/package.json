@@ -1,0 +1,27 @@
+{
+  "name": "@cnbsoft/k3s-studio-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for k3s-studio — control k3s clusters via AI prompts",
+  "main": "dist/index.js",
+  "bin": {
+    "k3s-studio-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --out-dir dist --no-splitting",
+    "dev": "tsup src/index.ts --format cjs --out-dir dist --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "axios": "^1.9.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
