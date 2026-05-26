@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Server, ChevronLeft, ChevronRight, Bot } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "@/contexts/I18nContext";
 
 const navItems = [
   { href: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { href: "/servers", labelKey: "nav.servers", icon: Server },
+  { href: "/ai", labelKey: "nav.ai", icon: Bot },
 ];
 
 export function Sidebar() {

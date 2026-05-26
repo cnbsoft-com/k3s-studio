@@ -1,0 +1,68 @@
+flowchart LR
+    classDef actor fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a
+    classDef uc    fill:#f0fdf4,stroke:#22c55e,color:#14532d
+    classDef sys   fill:#faf5ff,stroke:#a855f7,color:#581c87
+
+    User([👤 사용자]):::actor
+    Sched([⏰ 스케줄러]):::actor
+    AI([🤖 MCP Bridge]):::actor
+
+    subgraph SRV["🖥️ 서버 관리"]
+        S1(("서버 등록")):::uc
+        S2(("SSH 연결 테스트")):::uc
+        S3(("Multipass 설치\n확인")):::uc
+        S4(("Multipass 설치")):::uc
+        S5(("서버 상태\n자동 점검")):::uc
+        S1 -->|<<include>>| S2
+        S3 -.->|<<extend>>| S4
+    end
+
+    subgraph CLS["☸️ 클러스터 관리"]
+        C1(("클러스터 생성")):::uc
+        C2(("클러스터 삭제")):::uc
+        C3(("워커 추가/삭제")):::uc
+        C4(("클러스터\n시작/중지/재시작")):::uc
+        C5(("TLS SAN 설정")):::uc
+        C6(("클러스터 발견\n& 가져오기")):::uc
+        C1 -->|<<include>>| S2
+    end
+
+    subgraph K8S["🔷 K8s 리소스 관리"]
+        K1(("리소스 조회\n(Pod/Svc/Deploy 등)")):::uc
+        K2(("매니페스트 Apply")):::uc
+        K3(("매니페스트 Delete")):::uc
+        K4(("파드 로그 조회")):::uc
+        K5(("템플릿 저장/로드")):::uc
+        K2 -->|<<include>>| K5
+    end
+
+    subgraph AIS["🤖 AI 어시스턴트"]
+        A1(("AI 스택 배포\n(Ollama+WebUI)")):::uc
+        A2(("Ollama 모델 조회")):::uc
+        A3(("Ollama 모델 설치")):::uc
+        A4(("Open WebUI\nURL 조회")):::uc
+        A1 -->|<<include>>| K2
+    end
+
+    User --- S1
+    User --- S3
+    User --- C1
+    User --- C2
+    User --- C3
+    User --- C4
+    User --- C5
+    User --- C6
+    User --- K1
+    User --- K2
+    User --- K3
+    User --- K4
+    User --- K5
+    User --- A1
+
+    Sched --- S5
+
+    AI --- A1
+    AI --- A2
+    AI --- A3
+    AI --- A4
+    AI --- K1

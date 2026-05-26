@@ -11,12 +11,3 @@ export const http: AxiosInstance = axios.create({
   },
   timeout: 10_000,
 });
-
-// Ollama API calls can take minutes (model inference, pull). Use a separate instance.
-const ollamaUrl = process.env.OLLAMA_URL ?? "http://localhost:11434";
-
-export const ollamaHttp: AxiosInstance = axios.create({
-  baseURL: ollamaUrl,
-  headers: { "Content-Type": "application/json" },
-  timeout: 300_000,
-});

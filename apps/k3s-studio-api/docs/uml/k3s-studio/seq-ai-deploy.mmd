@@ -1,0 +1,51 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 사용자
+    participant UI as Next.js UI
+    participant Bridge as MCP HTTP Bridge<br/>(:3001)
+    participant MCPS as MCP Server (in-memory)
+    participant API as k3s-studio-api<br/>(:9090)
+    participant K8S as K8sService
+    participant Ollama as Ollama API<br/>(:11434)
+    participant K8sAPI as k3s API Server
+
+    Note over User,K8sAPI: [1] UI에서 AI 어시스턴트 배포
+
+    User->>UI: AI 어시스턴트 탭 → 모델/메모리 선택 → 배포 클릭
+    UI->>API: POST /api/clusters/{name}/k8s/apply<br/>{ yaml: Namespace+PVC+Ollama+OpenWebUI YAML }
+    API->>K8S: applyManifest(clusterName, yaml)
+    K8S->>K8sAPI: kubectl apply (ai-system Namespace, Deployments, Services, PVCs)
+    K8sAPI-->>K8S: 완료
+    K8S-->>API: result=success
+    API-->>UI: 완료
+    UI-->>User: "AI 어시스턴트 배포가 시작되었습니다" 토스트<br/>Open WebUI: http://nodeIP:30080
+
+    Note over User,K8sAPI: [2] MCP Bridge에서 AI 도구 호출 (Open WebUI Function Call)
+
+    User->>Ollama: Open WebUI에서 "클러스터 목록 보여줘"
+    Ollama->>Bridge: POST /tools/list_clusters {}
+    Bridge->>MCPS: mcpClient.callTool("list_clusters", {})
+    MCPS->>API: GET /api/clusters
+    API-->>MCPS: List~ClusterResponse~
+    MCPS-->>Bridge: text result
+    Bridge-->>Ollama: { result: "• demo-cluster [RUNNING] ..." }
+    Ollama-->>User: "현재 실행 중인 클러스터: demo-cluster ..."
+
+    Note over User,K8sAPI: [3] Ollama 모델 설치 (비동기 fire-and-forget)
+
+    User->>Ollama: Open WebUI에서 "qwen2.5-coder:7b 설치해줘"
+    Ollama->>Bridge: POST /tools/pull_ollama_model<br/>{ clusterName, model: "qwen2.5-coder:7b" }
+    Bridge->>MCPS: mcpClient.callTool("pull_ollama_model", ...)
+    MCPS->>Ollama: POST /api/pull { name: "qwen2.5-coder:7b" } [fire-and-forget, timeout=300s]
+    Note right of Ollama: 백그라운드 다운로드
+    MCPS-->>Bridge: "Pull started for 'qwen2.5-coder:7b'..."
+    Bridge-->>Ollama: { result: "Pull started..." }
+    Ollama-->>User: "모델 설치를 시작했습니다. list_ollama_models로 확인 가능합니다."
+
+    Note over User,K8sAPI: [4] GET /tools — OpenAI Function Schema 조회
+
+    Ollama->>Bridge: GET /tools
+    Bridge->>MCPS: mcpClient.listTools()
+    MCPS-->>Bridge: List~ToolDefinition~
+    Bridge->>Bridge: MCP schema → OpenAI function format 변환
+    Bridge-->>Ollama: [{ type: "function", function: { name, description, parameters } }, ...]
