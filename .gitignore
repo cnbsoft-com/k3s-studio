@@ -46,3 +46,6 @@ temp/
 apps/mpk3s-ui/node_modules/
 .next/
 .gstack/
+
+
+**/**/tsconfig.tsbuildinfo
