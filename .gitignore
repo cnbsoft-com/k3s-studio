@@ -49,3 +49,6 @@ apps/mpk3s-ui/node_modules/
 
 
 **/**/tsconfig.tsbuildinfo
+
+# Local analysis files
+YC_Application_Analysis.html
