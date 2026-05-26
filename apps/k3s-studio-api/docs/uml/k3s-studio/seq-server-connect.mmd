@@ -1,0 +1,71 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 사용자
+    participant UI as Next.js UI
+    participant API as ServerController
+    participant SS as ServerService
+    participant ES as EncryptionService
+    participant SSH as SshMultipassExecutor
+    participant Rem as 원격 서버
+
+    User->>UI: 서버 등록 폼 입력<br/>(host, port, username, privateKey)
+    UI->>API: POST /api/servers
+    API->>SS: createServer(req)
+    SS->>SS: existsByName() 중복 확인
+    SS->>ES: encrypt(privateKey)
+    ES-->>SS: encryptedKey
+    SS->>SS: Server(status=UNKNOWN) 저장
+    SS-->>API: ServerResponse
+    API-->>UI: { id, name, status: UNKNOWN }
+
+    User->>UI: SSH 연결 테스트 클릭
+    UI->>API: PUT /api/servers/{id} (폼 최신화)
+    UI->>API: POST /api/servers/{id}/test
+    API->>SS: testConnection(id)
+    SS->>ES: decrypt(privateKey)
+    ES-->>SS: plainKey
+    SS->>SSH: new SshMultipassExecutor(host, port, user, key)
+    SSH->>Rem: SSH 연결 + echo ok
+    alt 연결 성공
+        Rem-->>SSH: ok
+        SSH-->>SS: 성공
+        SS->>SS: status = CONNECTED, lastSeenAt = now
+        SS-->>API: { success: true }
+        API-->>UI: 연결 성공 토스트
+    else 연결 실패
+        Rem-->>SSH: 오류
+        SSH-->>SS: Exception
+        SS->>SS: status = UNREACHABLE
+        SS-->>API: { success: false, message }
+        API-->>UI: 오류 메시지 표시
+    end
+
+    User->>UI: Multipass 설치 확인 클릭
+    UI->>API: POST /api/servers/{id}/multipass/check
+    API->>SS: checkMultipass(id)
+    SS->>SSH: execRaw("multipass version")
+    alt 설치됨
+        SSH-->>SS: "multipass 1.x.x"
+        SS-->>UI: { installed: true, version }
+    else 미설치
+        SSH-->>SS: command not found
+        SS-->>UI: { installed: false }
+        User->>UI: Multipass 설치 클릭
+        UI->>API: POST /api/servers/{id}/multipass/install
+        API->>SS: installMultipass(id)
+        SS->>SS: status = INSTALLING_MULTIPASS
+        SS-->>UI: { jobId }
+        Note over SS,Rem: @Async — 백그라운드 설치
+        SS->>SSH: execRawStreaming("sudo snap install multipass")
+        SSH->>Rem: 설치 실행
+        Rem-->>SSH: 로그 스트리밍
+        SS->>SS: status = CONNECTED
+        UI->>API: GET /api/jobs/{jobId} (polling)
+        API-->>UI: { status: SUCCESS }
+    end
+
+    Note over SS,Rem: 60초마다 자동 점검 (@Scheduled)
+    SS->>SSH: execRaw("echo ok")
+    SSH->>Rem: heartbeat
+    Rem-->>SSH: ok
+    SS->>SS: lastSeenAt = now

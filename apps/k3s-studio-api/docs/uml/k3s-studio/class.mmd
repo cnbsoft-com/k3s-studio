@@ -1,0 +1,191 @@
+classDiagram
+    direction TB
+
+    %% ── Domain Entities ──────────────────────────────────────────
+    class Server {
+        +Long id
+        +String name
+        +String host
+        +int port
+        +String username
+        +String privateKey
+        +boolean local
+        +ServerStatus status
+        +OffsetDateTime lastSeenAt
+    }
+
+    class Cluster {
+        +Long id
+        +String name
+        +Long serverId
+        +ClusterStatus status
+        +String masterSpec
+        +int workerCount
+        +String ubuntuImage
+    }
+
+    class Job {
+        +UUID id
+        +String clusterName
+        +Long serverId
+        +JobType type
+        +JobStatus status
+        +String log
+        +OffsetDateTime createdAt
+        +OffsetDateTime finishedAt
+    }
+
+    class ManifestTemplate {
+        +Long id
+        +String clusterName
+        +String name
+        +String description
+        +String yamlContent
+        +OffsetDateTime createdAt
+    }
+
+    class ApplyHistory {
+        +Long id
+        +String clusterName
+        +String action
+        +String result
+        +String yamlContent
+        +OffsetDateTime executedAt
+    }
+
+    %% ── Services ─────────────────────────────────────────────────
+    class ServerService {
+        +listServers() List~ServerResponse~
+        +createServer(req) ServerResponse
+        +updateServer(id, req) ServerResponse
+        +deleteServer(id)
+        +testConnection(id) Map
+        +checkMultipass(id) Map
+        +installMultipass(id) UUID
+        +checkAllServers() [Scheduled]
+    }
+
+    class ClusterService {
+        +listClusters(serverId) List~ClusterResponse~
+        +getCluster(name) ClusterResponse
+        +createCluster(req) UUID
+        +deleteCluster(name) UUID
+        +addWorkers(name, req) UUID
+        +deleteWorker(name, worker) UUID
+        +addTls(name, req) UUID
+        +startCluster(name)
+        +stopCluster(name)
+        +discoverClusters(serverId) List
+        +importClusters(serverId, list) List
+    }
+
+    class K8sService {
+        +getNamespaces(cluster) List~String~
+        +getPods(cluster, ns) List
+        +getServices(cluster, ns) List
+        +getDeployments(cluster, ns) List
+        +applyManifest(cluster, yaml) ApplyHistory
+        +deleteManifest(cluster, yaml) ApplyHistory
+        +getPodLogs(cluster, ns, pod) String
+        +getResourceManifest(cluster, type, ns, name) String
+    }
+
+    class MultipassService {
+        +launchMaster(name, ...)
+        +launchWorker(name, idx, ...)
+        +getMasterIp(name) String
+        +getNodeToken(name) String
+        +getKubeconfig(name) String
+        +listNodes() List~MultipassNode~
+        +listClusterNodes(name) List~MultipassNode~
+        +deleteNode(name, logger)
+        +startNode(name) / stopNode / restartNode / suspendNode
+        +setNodeHardware(name, cpus, mem, disk)
+        +withExecutor(exec) MultipassService
+    }
+
+    class JobService {
+        +createJob(cluster, type) Job
+        +start(id)
+        +appendLog(id, line)
+        +complete(id)
+        +fail(id, msg)
+        +getJob(id) JobResponse
+    }
+
+    class ManifestTemplateService {
+        +list(cluster) List
+        +create(req) ManifestTemplate
+        +update(id, req) ManifestTemplate
+        +delete(id)
+    }
+
+    class EncryptionService {
+        +encrypt(plain) String
+        +decrypt(cipher) String
+    }
+
+    %% ── Infrastructure ───────────────────────────────────────────
+    class MultipassExecutorFactory {
+        +get(serverId) MultipassExecutor
+    }
+
+    class MultipassExecutor {
+        <<interface>>
+        +exec(args) String
+        +execRaw(cmd) String
+        +execRawStreaming(cmd, logger)
+    }
+
+    class LocalMultipassExecutor {
+        +exec(args) String
+        +execRaw(cmd) String
+    }
+
+    class SshMultipassExecutor {
+        -String host
+        -int port
+        -String username
+        -String privateKey
+        +exec(args) String
+        +execRaw(cmd) String
+        +execRawStreaming(cmd, logger)
+    }
+
+    class KubernetesClientFactory {
+        +getClient(clusterName) KubernetesClient
+    }
+
+    class SshTunnelManager {
+        +getOrCreateTunnel(cluster) SshTunnel
+        +closeTunnel(clusterName)
+    }
+
+    %% ── Relationships ────────────────────────────────────────────
+    ServerService --> ServerRepository : uses
+    ServerService --> JobService : creates jobs
+    ServerService --> EncryptionService : encrypt/decrypt key
+    ServerService --> MultipassExecutorFactory : test connection
+    ServerService --> ClusterService : autoImport
+
+    ClusterService --> ClusterRepository : uses
+    ClusterService --> JobService : creates jobs
+    ClusterService --> MultipassService : manages VMs
+    ClusterService --> MultipassExecutorFactory : get executor
+
+    K8sService --> ClusterRepository : lookup cluster
+    K8sService --> KubernetesClientFactory : get client
+    K8sService --> ApplyHistoryRepository : record history
+
+    MultipassService --> MultipassExecutor : delegates
+    MultipassExecutorFactory --> LocalMultipassExecutor : local server
+    MultipassExecutorFactory --> SshMultipassExecutor : remote server
+    MultipassExecutor <|.. LocalMultipassExecutor
+    MultipassExecutor <|.. SshMultipassExecutor
+
+    KubernetesClientFactory --> SshTunnelManager : remote cluster tunnel
+
+    Cluster "many" --> "1" Server : belongs to (serverId)
+    Job --> Cluster : references
+    ManifestTemplate --> Cluster : scoped to
+    ApplyHistory --> Cluster : scoped to

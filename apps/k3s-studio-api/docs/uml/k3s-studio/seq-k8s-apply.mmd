@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 사용자
+    participant UI as Next.js UI
+    participant API as K8sController
+    participant K8S as K8sService
+    participant KCF as KubernetesClientFactory
+    participant STM as SshTunnelManager
+    participant KC as KubernetesClient
+    participant K8sAPI as k3s API Server
+
+    User->>UI: 매니페스트 YAML 입력 후 Apply 클릭
+    UI->>API: POST /api/clusters/{name}/k8s/apply<br/>{ yaml: "..." }
+    API->>K8S: applyManifest(clusterName, yaml)
+
+    K8S->>KCF: getClient(clusterName)
+    KCF->>KCF: clusterRepository.findByName()
+    alt 원격 클러스터 (serverId != null)
+        KCF->>STM: getOrCreateTunnel(cluster)
+        STM->>STM: SSH 터널 생성 (로컬포트 → k3s API 6443)
+        STM-->>KCF: localPort
+        KCF->>KC: KubernetesClientBuilder(tunneled kubeconfig)
+    else 로컬 클러스터
+        KCF->>KC: KubernetesClientBuilder(local kubeconfig)
+    end
+    KCF-->>K8S: KubernetesClient
+
+    K8S->>K8S: YAML 파싱 (multi-doc 지원)
+    loop 각 리소스별
+        K8S->>KC: serverSideApply(resource)
+        KC->>K8sAPI: PATCH /apis/.../apply
+        K8sAPI-->>KC: 결과
+        KC-->>K8S: 완료
+    end
+
+    K8S->>K8S: ApplyHistory(action=apply, result=success) 저장
+    K8S-->>API: ApplyHistory
+    API-->>UI: { result: "success" }
+    UI-->>User: Apply 완료 토스트
+
+    Note over UI,K8sAPI: Delete 흐름도 동일 (action=delete)
+
+    User->>UI: 리소스 목록 조회 (Pods 탭)
+    UI->>API: GET /api/clusters/{name}/k8s/pods?namespace=ai-system
+    API->>K8S: getPods(clusterName, "ai-system")
+    K8S->>KCF: getClient(clusterName)
+    KCF-->>K8S: KubernetesClient
+    K8S->>KC: pods().inNamespace("ai-system").list()
+    KC->>K8sAPI: GET /api/v1/namespaces/ai-system/pods
+    K8sAPI-->>KC: PodList
+    KC-->>K8S: List~Pod~
+    K8S->>K8S: toPodResponse() 변환
+    K8S-->>API: List~K8sPodResponse~
+    API-->>UI: JSON 응답
+    UI-->>User: Pod 목록 테이블 렌더

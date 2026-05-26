@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 사용자
+    participant UI as Next.js UI
+    participant API as ClusterController
+    participant CS as ClusterService
+    participant JS as JobService
+    participant MS as MultipassService
+    participant MP as Multipass VM
+
+    User->>UI: 클러스터 생성 요청<br/>(name, masterSpec, workerCount)
+    UI->>API: POST /api/clusters
+    API->>CS: createCluster(req)
+
+    CS->>CS: clusterRepository.existsByName() 중복 확인
+    CS->>CS: Cluster(status=CREATING) 저장
+    CS->>JS: createJob(CLUSTER_CREATE)
+    JS-->>CS: jobId
+
+    CS-->>API: jobId
+    API-->>UI: { jobId }
+
+    Note over CS,MP: @Async — 백그라운드 실행
+
+    CS->>JS: start(jobId)
+    CS->>MS: launchMaster(name, cpus, mem, disk, image)
+    MS->>MP: multipass launch --name {name}-master
+    MP-->>MS: 완료
+    MS-->>CS: 로그 스트리밍
+
+    CS->>MS: getMasterIp(name)
+    MS->>MP: multipass exec {name}-master -- hostname -I
+    MP-->>MS: masterIp
+
+    CS->>MS: getNodeToken(name)
+    MS->>MP: multipass exec {name}-master -- cat /var/lib/rancher/k3s/server/node-token
+    MP-->>MS: nodeToken
+
+    loop workerCount 번 반복
+        CS->>MS: launchWorker(name, i, spec, masterIp, nodeToken)
+        MS->>MP: multipass launch --name {name}-worker{i}
+        MP-->>MS: 완료
+    end
+
+    CS->>MS: getKubeconfig(name)
+    MS->>MP: multipass exec {name}-master -- cat /etc/rancher/k3s/k3s.yaml
+    MP-->>MS: kubeconfig YAML
+
+    CS->>MS: saveKubeconfig(name, kubeconfig)
+    CS->>CS: updateClusterStatus(RUNNING)
+    CS->>JS: complete(jobId)
+
+    UI->>API: GET /api/jobs/{jobId} (polling)
+    API-->>UI: { status: SUCCESS, log: ... }
+    UI-->>User: 클러스터 생성 완료
