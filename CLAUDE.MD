@@ -4,10 +4,13 @@ Before reading files, always use qmd to search.
 - `qmd query`: hybrid search
 - `qmd vsearch`: 의미 기반 벡터 검색
 
-## Rules: Conversation Language Rule 
+## Rules: Conversation Language Rule
 한국어
 
-## Rules: Token Optimization 
+## Rules: Commit User
+CHOI IKYONG<ikyong.choi@gmail.com>
+
+## Rules: Token Optimization
 1. Trust skills/memory - skip re-reading files
 2. No speculative tool calls
 3. Parallelize independent tool calls

@@ -7,6 +7,9 @@ Before reading files, always use qmd to search.
 ## Rules: Conversation Language Rule
 한국어
 
+## Rules: Commit User
+CHOI IKYONG<ikyong.choi@gmail.com>
+
 ## Rules: Token Optimization
 1. Trust skills/memory - skip re-reading files
 2. No speculative tool calls
