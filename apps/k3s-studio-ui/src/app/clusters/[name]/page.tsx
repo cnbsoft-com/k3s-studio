@@ -366,7 +366,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
       {/* Tabs */}
       <div className="border-b flex gap-1">
-        {(["nodes", "k8s", "ai"] as const).map((tab) => (
+        {(["nodes", "k8s"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -376,7 +376,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "nodes" ? t("node.tab") : tab === "k8s" ? t("k8s.tab") : t("ai.tab")}
+            {tab === "nodes" ? t("node.tab") : t("k8s.tab")}
           </button>
         ))}
       </div>
