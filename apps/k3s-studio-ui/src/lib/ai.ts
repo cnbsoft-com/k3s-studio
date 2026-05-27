@@ -21,7 +21,7 @@ export interface Message {
 }
 
 export interface PreviewPayload {
-  action: "apply_manifest" | "delete_manifest";
+  action: "apply_manifest" | "delete_manifest" | "scale_deployment" | "restart_deployment" | "start_cluster" | "stop_cluster" | "create_cluster";
   yaml: string;
   clusterName: string;
 }
@@ -76,7 +76,8 @@ export async function streamChat(
   message: string,
   apiKey: string | null,
   conversationId: number | null,
-  callbacks: ChatStreamCallbacks
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal
 ): Promise<void> {
   const url = new URL("/api/ai/chat", window.location.origin);
   if (conversationId) url.searchParams.set("conversationId", String(conversationId));
@@ -84,11 +85,19 @@ export async function streamChat(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) headers["X-AI-Api-Key"] = apiKey;
 
-  const res = await fetch(url.toString(), {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ message }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message }),
+      signal,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") return;
+    callbacks.onError(`네트워크 오류`);
+    return;
+  }
 
   if (!res.ok || !res.body) {
     callbacks.onError(`HTTP ${res.status}`);
@@ -117,29 +126,34 @@ export async function streamChat(
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    const events = buffer.split(/\n\n/);
-    buffer = events.pop() ?? "";
+      const events = buffer.split(/\n\n/);
+      buffer = events.pop() ?? "";
 
-    for (const event of events) {
-      let eventType = "message";
-      let dataLines: string[] = [];
+      for (const event of events) {
+        let eventType = "message";
+        let dataLines: string[] = [];
 
-      for (const line of event.split("\n")) {
-        if (line.startsWith("event:")) {
-          eventType = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trim());
+        for (const line of event.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+
+        if (dataLines.length > 0) {
+          dispatchEvent(eventType, dataLines.join("\n"));
         }
       }
-
-      if (dataLines.length > 0) {
-        dispatchEvent(eventType, dataLines.join("\n"));
-      }
     }
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") return;
+    throw e;
   }
 }

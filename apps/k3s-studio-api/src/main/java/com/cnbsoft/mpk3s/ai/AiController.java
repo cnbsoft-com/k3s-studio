@@ -29,7 +29,7 @@ public class AiController {
             @RequestHeader(value = "X-AI-Api-Key", required = false) String apiKey) {
 
         String message = body.get("message");
-        SseEmitter emitter = new SseEmitter(120_000L);
+        SseEmitter emitter = new SseEmitter(600_000L);
         aiService.streamChat(conversationId, message, apiKey, emitter);
         return emitter;
     }

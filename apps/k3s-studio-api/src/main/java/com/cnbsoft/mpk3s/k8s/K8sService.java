@@ -245,6 +245,21 @@ public class K8sService {
         }).toList();
     }
 
+    public void scaleDeployment(String clusterName, String namespace, String name, int replicas) throws IOException {
+        client(clusterName).apps().deployments().inNamespace(namespace).withName(name)
+                .scale(replicas);
+    }
+
+    public void restartDeployment(String clusterName, String namespace, String name) throws IOException {
+        String now = java.time.Instant.now().toString();
+        client(clusterName).apps().deployments().inNamespace(namespace).withName(name)
+                .edit(d -> {
+                    d.getSpec().getTemplate().getMetadata().getAnnotations()
+                            .put("kubectl.kubernetes.io/restartedAt", now);
+                    return d;
+                });
+    }
+
     private K8sServiceResponse toServiceResponse(io.fabric8.kubernetes.api.model.Service svc) {
         ObjectMeta meta = svc.getMetadata();
         ServiceSpec spec = svc.getSpec();

@@ -345,6 +345,28 @@ public class ClusterService {
         });
     }
 
+    // ── Cluster-level async control (AI 도구용) ─────────────────────────────────
+
+    @Async("clusterTaskExecutor")
+    public void startClusterAsync(String clusterName) {
+        try {
+            List<MultipassNode> nodes = getNodes(clusterName);
+            for (MultipassNode node : nodes) startNode(clusterName, node.getName());
+        } catch (Exception e) {
+            log.warn("startClusterAsync 오류 — cluster={}: {}", clusterName, e.getMessage());
+        }
+    }
+
+    @Async("clusterTaskExecutor")
+    public void stopClusterAsync(String clusterName) {
+        try {
+            List<MultipassNode> nodes = getNodes(clusterName);
+            for (MultipassNode node : nodes) stopNode(clusterName, node.getName());
+        } catch (Exception e) {
+            log.warn("stopClusterAsync 오류 — cluster={}: {}", clusterName, e.getMessage());
+        }
+    }
+
     // ── Instance control (synchronous) ────────────────────────────────────────
 
     public void startNode(String clusterName, String nodeName) throws Exception {

@@ -1,6 +1,8 @@
 package com.cnbsoft.mpk3s.ai;
 
 import com.cnbsoft.mpk3s.cluster.ClusterRepository;
+import com.cnbsoft.mpk3s.cluster.ClusterRequest;
+import com.cnbsoft.mpk3s.cluster.ClusterService;
 import com.cnbsoft.mpk3s.k8s.K8sService;
 import com.cnbsoft.mpk3s.server.ServerRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -15,8 +17,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -34,13 +41,14 @@ public class AiService {
     private final MessageRepository messageRepository;
     private final ServerRepository serverRepository;
     private final ClusterRepository clusterRepository;
+    private final ClusterService clusterService;
     private final K8sService k8sService;
     private final ObjectMapper objectMapper;
 
     // conversationId → 승인 대기 중인 매니페스트 작업
     private final ConcurrentHashMap<Long, PendingOperation> pendingOps = new ConcurrentHashMap<>();
 
-    public record PendingOperation(String action, String yaml, String clusterName) {}
+    public record PendingOperation(String action, String yaml, String clusterName, Map<String, Object> extra) {}
 
     @Async("aiTaskExecutor")
     public CompletableFuture<Void> streamChat(Long conversationId, String userMessage, String apiKey, SseEmitter emitter) {
@@ -51,6 +59,11 @@ public class AiService {
             Conversation conversation = conversationId != null
                     ? conversationRepository.findById(conversationId).orElseGet(() -> conversationRepository.save(new Conversation()))
                     : conversationRepository.save(new Conversation());
+
+            if (conversation.getTitle() == null) {
+                conversation.setTitle(userMessage.length() > 25 ? userMessage.substring(0, 25) + "..." : userMessage);
+                conversationRepository.save(conversation);
+            }
 
             Message userMsg = new Message();
             userMsg.setConversationId(conversation.getId());
@@ -66,35 +79,66 @@ public class AiService {
             int round = 0;
 
             while (round++ < MAX_TOOL_ROUNDS) {
-                String responseBody = callModel(client, config.getModelName(), messages, tools);
-                JsonNode response = objectMapper.readTree(responseBody);
-                JsonNode choice = response.path("choices").path(0);
-                JsonNode assistantMsg = choice.path("message");
-                String textContent = assistantMsg.path("content").asText("");
+                StreamResult result = streamModel(client, config.getModelName(), messages, tools, emitter);
+                String textContent = result.textContent();
+                List<Map<String, Object>> toolCalls = result.toolCalls();
 
-                boolean hasToolCalls = assistantMsg.has("tool_calls")
-                        && assistantMsg.path("tool_calls").isArray()
-                        && !assistantMsg.path("tool_calls").isEmpty();
+                if (!toolCalls.isEmpty()) {
+                    // 어시스턴트 메시지를 히스토리에 추가 (tool_calls 포함)
+                    Map<String, Object> assistantEntry = new HashMap<>();
+                    assistantEntry.put("role", "assistant");
+                    if (!textContent.isBlank()) assistantEntry.put("content", textContent);
+                    assistantEntry.put("tool_calls", toolCalls);
+                    messages.add(assistantEntry);
 
-                if (hasToolCalls) {
-                    messages.add(objectMapper.convertValue(assistantMsg, new TypeReference<>() {}));
-                    for (JsonNode toolCall : assistantMsg.path("tool_calls")) {
-                        String toolCallId = toolCall.path("id").asText();
-                        String toolName = toolCall.path("function").path("name").asText();
-                        String argsJson = toolCall.path("function").path("arguments").asText();
+                    for (Map<String, Object> toolCall : toolCalls) {
+                        String toolCallId = (String) toolCall.getOrDefault("id", "");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> fn = (Map<String, Object>) toolCall.getOrDefault("function", Map.of());
+                        String toolName = (String) fn.getOrDefault("name", "");
+                        String argsJson = (String) fn.getOrDefault("arguments", "{}");
                         Map<String, Object> args = objectMapper.readValue(argsJson, new TypeReference<>() {});
 
-                        // apply/delete: 즉시 실행하지 않고 preview 이벤트로 사용자 확인 요청
+                        // 파괴적 도구: 즉시 실행하지 않고 preview 이벤트로 사용자 확인 요청
                         if ("apply_manifest".equals(toolName) || "delete_manifest".equals(toolName)) {
                             String yaml = (String) args.getOrDefault("yaml", "");
                             String cluster = (String) args.getOrDefault("clusterName", "");
-                            // 이미 pending이 있으면 skip (한 응답에 두 번 apply/delete 방지)
-                            if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, yaml, cluster)) == null) {
+                            if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, yaml, cluster, Map.of())) == null) {
                                 String previewPayload = objectMapper.writeValueAsString(
                                         Map.of("action", toolName, "yaml", yaml, "clusterName", cluster));
                                 emitter.send(SseEmitter.event().name("preview").data(previewPayload));
                             }
-                            // preview 후 스트림 종료 — 사용자가 /confirm or /cancel 호출
+                            break;
+                        }
+                        if ("scale_deployment".equals(toolName) || "restart_deployment".equals(toolName)) {
+                            String cluster = requireString(args, "clusterName");
+                            String ns = (String) args.getOrDefault("namespace", "default");
+                            String depName = requireString(args, "deploymentName");
+                            Map<String, Object> extra = new java.util.HashMap<>(Map.of("namespace", ns, "name", depName));
+                            String displayYaml;
+                            if ("scale_deployment".equals(toolName)) {
+                                int replicas = ((Number) args.getOrDefault("replicas", 1)).intValue();
+                                extra.put("replicas", replicas);
+                                displayYaml = "deployment: " + depName + "\nnamespace: " + ns + "\nreplicas: " + replicas;
+                            } else {
+                                displayYaml = "deployment: " + depName + "\nnamespace: " + ns;
+                            }
+                            if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, displayYaml, cluster, extra)) == null) {
+                                String previewPayload = objectMapper.writeValueAsString(
+                                        Map.of("action", toolName, "yaml", displayYaml, "clusterName", cluster));
+                                emitter.send(SseEmitter.event().name("preview").data(previewPayload));
+                            }
+                            break;
+                        }
+                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName)) {
+                            String cluster = requireString(args, "clusterName");
+                            Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
+                            String displayYaml = buildClusterLifecycleDisplay(toolName, args);
+                            if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, displayYaml, cluster, extra)) == null) {
+                                String previewPayload = objectMapper.writeValueAsString(
+                                        Map.of("action", toolName, "yaml", displayYaml, "clusterName", cluster));
+                                emitter.send(SseEmitter.event().name("preview").data(previewPayload));
+                            }
                             break;
                         }
 
@@ -115,7 +159,7 @@ public class AiService {
                     continue;
                 }
 
-                // Fallback: JSON content에 tool call
+                // Fallback: JSON content에 tool call (비표준 모델 지원)
                 if (!textContent.isBlank()) {
                     try {
                         JsonNode parsed = objectMapper.readTree(textContent.trim());
@@ -126,9 +170,40 @@ public class AiService {
                             if ("apply_manifest".equals(toolName) || "delete_manifest".equals(toolName)) {
                                 String yaml = (String) args.getOrDefault("yaml", "");
                                 String cluster = (String) args.getOrDefault("clusterName", "");
-                                if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, yaml, cluster)) == null) {
+                                if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, yaml, cluster, Map.of())) == null) {
                                     String previewPayload = objectMapper.writeValueAsString(
                                             Map.of("action", toolName, "yaml", yaml, "clusterName", cluster));
+                                    emitter.send(SseEmitter.event().name("preview").data(previewPayload));
+                                }
+                                break;
+                            }
+                            if ("scale_deployment".equals(toolName) || "restart_deployment".equals(toolName)) {
+                                String cluster = requireString(args, "clusterName");
+                                String ns = (String) args.getOrDefault("namespace", "default");
+                                String depName = requireString(args, "deploymentName");
+                                Map<String, Object> extra = new java.util.HashMap<>(Map.of("namespace", ns, "name", depName));
+                                String displayYaml;
+                                if ("scale_deployment".equals(toolName)) {
+                                    int replicas = ((Number) args.getOrDefault("replicas", 1)).intValue();
+                                    extra.put("replicas", replicas);
+                                    displayYaml = "deployment: " + depName + "\nnamespace: " + ns + "\nreplicas: " + replicas;
+                                } else {
+                                    displayYaml = "deployment: " + depName + "\nnamespace: " + ns;
+                                }
+                                if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, displayYaml, cluster, extra)) == null) {
+                                    String previewPayload = objectMapper.writeValueAsString(
+                                            Map.of("action", toolName, "yaml", displayYaml, "clusterName", cluster));
+                                    emitter.send(SseEmitter.event().name("preview").data(previewPayload));
+                                }
+                                break;
+                            }
+                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName)) {
+                                String cluster = requireString(args, "clusterName");
+                                Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
+                                String displayYaml = buildClusterLifecycleDisplay(toolName, args);
+                                if (pendingOps.putIfAbsent(conversation.getId(), new PendingOperation(toolName, displayYaml, cluster, extra)) == null) {
+                                    String previewPayload = objectMapper.writeValueAsString(
+                                            Map.of("action", toolName, "yaml", displayYaml, "clusterName", cluster));
                                     emitter.send(SseEmitter.event().name("preview").data(previewPayload));
                                 }
                                 break;
@@ -148,10 +223,8 @@ public class AiService {
                     } catch (Exception ignored) {}
                 }
 
-                if (!textContent.isBlank()) {
-                    emitter.send(SseEmitter.event().data(textContent));
-                    fullResponse.append(textContent);
-                }
+                // 텍스트는 streamModel()에서 이미 실시간으로 전송됨
+                fullResponse.append(textContent);
                 break;
             }
 
@@ -185,15 +258,71 @@ public class AiService {
         PendingOperation op = pendingOps.remove(conversationId);
         if (op == null) throw new IllegalStateException("대기 중인 작업이 없습니다.");
 
-        if ("apply_manifest".equals(op.action())) {
-            k8sService.applyManifest(op.clusterName(), op.yaml());
-            saveManifestMessage(conversationId, op.action(), op.yaml(), "매니페스트 적용 완료");
-            return "매니페스트 적용 완료";
-        } else {
-            k8sService.deleteManifest(op.clusterName(), op.yaml());
-            saveManifestMessage(conversationId, op.action(), op.yaml(), "매니페스트 삭제 완료");
-            return "매니페스트 삭제 완료";
-        }
+        return switch (op.action()) {
+            case "apply_manifest" -> {
+                k8sService.applyManifest(op.clusterName(), op.yaml());
+                saveManifestMessage(conversationId, op.action(), op.yaml(), "매니페스트 적용 완료");
+                yield "매니페스트 적용 완료";
+            }
+            case "delete_manifest" -> {
+                k8sService.deleteManifest(op.clusterName(), op.yaml());
+                saveManifestMessage(conversationId, op.action(), op.yaml(), "매니페스트 삭제 완료");
+                yield "매니페스트 삭제 완료";
+            }
+            case "scale_deployment" -> {
+                String ns = (String) op.extra().get("namespace");
+                String name = (String) op.extra().get("name");
+                int replicas = ((Number) op.extra().get("replicas")).intValue();
+                k8sService.scaleDeployment(op.clusterName(), ns, name, replicas);
+                String result = name + " 디플로이먼트가 " + replicas + "개로 스케일되었습니다.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
+            case "restart_deployment" -> {
+                String ns = (String) op.extra().get("namespace");
+                String name = (String) op.extra().get("name");
+                k8sService.restartDeployment(op.clusterName(), ns, name);
+                String result = name + " 디플로이먼트가 재시작되었습니다.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
+            case "start_cluster" -> {
+                clusterService.startClusterAsync(op.clusterName());
+                String result = "클러스터 '" + op.clusterName() + "' 시작을 요청했습니다. list_clusters로 상태를 확인하세요.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
+            case "stop_cluster" -> {
+                clusterService.stopClusterAsync(op.clusterName());
+                String result = "클러스터 '" + op.clusterName() + "' 정지를 요청했습니다. list_clusters로 상태를 확인하세요.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
+            case "create_cluster" -> {
+                Long serverId = serverRepository.findAll().stream().findFirst()
+                        .orElseThrow(() -> new IllegalStateException("등록된 서버가 없습니다."))
+                        .getId();
+                int workers = ((Number) op.extra().getOrDefault("workers", 0)).intValue();
+                int cpu = ((Number) op.extra().getOrDefault("cpu", 2)).intValue();
+                int memory = ((Number) op.extra().getOrDefault("memory", 2048)).intValue();
+                int disk = ((Number) op.extra().getOrDefault("disk", 20)).intValue();
+                ClusterRequest req = new ClusterRequest();
+                req.setName(op.clusterName());
+                req.setServerId(serverId);
+                req.setWorkerCount(workers);
+                req.setMasterSpec("custom");
+                req.setMasterCpus(cpu);
+                req.setMasterMemory(memory + "MB");
+                req.setMasterDisk(disk + "G");
+                req.setWorkerSpec("small");
+                req.setUbuntuImage("22.04");
+                java.util.UUID jobId = clusterService.createCluster(req);
+                String result = "클러스터 '" + op.clusterName() + "' 생성 시작 (job: " + jobId + "). list_clusters로 상태를 확인하세요.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
+            default -> throw new IllegalStateException("알 수 없는 액션: " + op.action());
+        };
     }
 
     public void cancelPending(Long conversationId) {
@@ -248,6 +377,8 @@ public class AiService {
                 """.formatted(serverCount, clusterCount);
     }
 
+    private record StreamResult(String textContent, List<Map<String, Object>> toolCalls, String finishReason) {}
+
     private RestClient buildRestClient(String modelUrl, String apiKey) {
         return RestClient.builder()
                 .baseUrl(modelUrl)
@@ -256,18 +387,70 @@ public class AiService {
                 .build();
     }
 
-    private String callModel(RestClient client, String modelName, List<Map<String, Object>> messages, List<Map<String, Object>> tools) {
+    private StreamResult streamModel(RestClient client, String modelName,
+                                     List<Map<String, Object>> messages, List<Map<String, Object>> tools,
+                                     SseEmitter emitter) throws Exception {
         Map<String, Object> body = Map.of(
                 "model", modelName,
                 "messages", messages,
                 "tools", tools,
-                "stream", false
+                "stream", true
         );
-        return client.post()
+
+        StringBuilder textBuffer = new StringBuilder();
+        Map<Integer, Map<String, Object>> toolCallBuffers = new HashMap<>();
+        String[] finishReason = {null};
+
+        client.post()
                 .uri("/v1/chat/completions")
                 .body(body)
-                .retrieve()
-                .body(String.class);
+                .exchange((req, res) -> {
+                    try (InputStream is = res.getBody();
+                         BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            if (!line.startsWith("data:")) continue;
+                            String data = line.substring(5).trim();
+                            if ("[DONE]".equals(data)) break;
+
+                            JsonNode chunk = objectMapper.readTree(data);
+                            JsonNode delta = chunk.path("choices").path(0).path("delta");
+                            String reason = chunk.path("choices").path(0).path("finish_reason").asText(null);
+                            if (reason != null && !reason.isBlank() && !"null".equals(reason)) finishReason[0] = reason;
+
+                            // 텍스트 청크: 즉시 전송
+                            String content = delta.path("content").asText(null);
+                            if (content != null && !content.isEmpty()) {
+                                textBuffer.append(content);
+                                emitter.send(SseEmitter.event().data(content));
+                            }
+
+                            // tool_calls 청크: 인덱스별 누적
+                            if (delta.has("tool_calls")) {
+                                for (JsonNode tc : delta.path("tool_calls")) {
+                                    int idx = tc.path("index").asInt(0);
+                                    Map<String, Object> buf = toolCallBuffers.computeIfAbsent(idx, k -> new HashMap<>());
+                                    if (tc.has("id")) buf.put("id", tc.path("id").asText());
+                                    if (tc.has("type")) buf.put("type", tc.path("type").asText());
+                                    Map<String, Object> fn = (Map<String, Object>) buf.computeIfAbsent("function", k -> new HashMap<>());
+                                    JsonNode fnNode = tc.path("function");
+                                    if (fnNode.has("name")) fn.put("name", fnNode.path("name").asText());
+                                    if (fnNode.has("arguments")) {
+                                        fn.merge("arguments", fnNode.path("arguments").asText(), (a, b) -> a.toString() + b.toString());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                });
+
+        List<Map<String, Object>> toolCalls = toolCallBuffers.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(Map.Entry::getValue)
+                .toList();
+
+        return new StreamResult(textBuffer.toString(), toolCalls, finishReason[0] != null ? finishReason[0] : "stop");
     }
 
     private String executeTool(String name, Map<String, Object> args) throws Exception {
@@ -326,6 +509,16 @@ public class AiService {
                 int tail = Math.min(((Number) args.getOrDefault("tail", 50)).intValue(), 200);
                 yield k8sService.getPodLogs(cluster, ns, pod, tail);
             }
+            case "list_configmaps" -> {
+                String cluster = requireString(args, "clusterName");
+                String ns = (String) args.getOrDefault("namespace", "default");
+                yield objectMapper.writeValueAsString(k8sService.getConfigMaps(cluster, ns));
+            }
+            case "list_ingresses" -> {
+                String cluster = requireString(args, "clusterName");
+                String ns = (String) args.getOrDefault("namespace", "default");
+                yield objectMapper.writeValueAsString(k8sService.getIngresses(cluster, ns));
+            }
             default -> "알 수 없는 도구: " + name;
         };
     }
@@ -378,6 +571,41 @@ public class AiService {
                                 "podName", strProp("파드 이름"),
                                 "tail", Map.of("type", "integer", "description", "조회할 줄 수 (기본 50, 최대 200)")
                         ), "required", List.of("clusterName", "namespace", "podName"))),
+                tool("start_cluster", "k3s 클러스터 전체 시작 (사용자 확인 후 실행됨)",
+                        param("clusterName", "시작할 클러스터 이름")),
+                tool("stop_cluster", "k3s 클러스터 전체 정지 (사용자 확인 후 실행됨)",
+                        param("clusterName", "정지할 클러스터 이름")),
+                tool("create_cluster", "새 k3s 클러스터 생성 (사용자 확인 후 실행됨, 기본값: masters=1 workers=0 cpu=2 memory=2048MB disk=20GB)",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("생성할 클러스터 이름"),
+                                "workers", Map.of("type", "integer", "description", "워커 수 (기본값 0)"),
+                                "cpu", Map.of("type", "integer", "description", "마스터 CPU 수 (기본값 2)"),
+                                "memory", Map.of("type", "integer", "description", "마스터 메모리 MB (기본값 2048)"),
+                                "disk", Map.of("type", "integer", "description", "마스터 디스크 GB (기본값 20)")
+                        ), "required", List.of("clusterName"))),
+                tool("list_configmaps", "컨피그맵 목록 조회",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("클러스터 이름"),
+                                "namespace", strProp("네임스페이스 (기본값: default)")
+                        ), "required", List.of("clusterName"))),
+                tool("list_ingresses", "인그레스 목록 조회",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("클러스터 이름"),
+                                "namespace", strProp("네임스페이스 (기본값: default)")
+                        ), "required", List.of("clusterName"))),
+                tool("scale_deployment", "디플로이먼트 레플리카 수 조정 (사용자 확인 후 실행됨)",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("클러스터 이름"),
+                                "namespace", strProp("네임스페이스 (기본값: default)"),
+                                "deploymentName", strProp("디플로이먼트 이름"),
+                                "replicas", Map.of("type", "integer", "description", "목표 레플리카 수")
+                        ), "required", List.of("clusterName", "deploymentName", "replicas"))),
+                tool("restart_deployment", "디플로이먼트 롤링 재시작 (사용자 확인 후 실행됨)",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("클러스터 이름"),
+                                "namespace", strProp("네임스페이스 (기본값: default)"),
+                                "deploymentName", strProp("디플로이먼트 이름")
+                        ), "required", List.of("clusterName", "deploymentName"))),
                 tool("apply_manifest", "YAML 매니페스트 적용 (사용자 확인 후 실행됨)",
                         Map.of("type", "object", "properties", Map.of(
                                 "clusterName", strProp("클러스터 이름"),
@@ -406,5 +634,30 @@ public class AiService {
 
     private Map<String, Object> strProp(String description) {
         return Map.of("type", "string", "description", description);
+    }
+
+    private Map<String, Object> buildClusterLifecycleExtra(String toolName, Map<String, Object> args) {
+        Map<String, Object> extra = new java.util.HashMap<>();
+        if ("create_cluster".equals(toolName)) {
+            extra.put("workers", args.getOrDefault("workers", 0));
+            extra.put("cpu", args.getOrDefault("cpu", 2));
+            extra.put("memory", args.getOrDefault("memory", 2048));
+            extra.put("disk", args.getOrDefault("disk", 20));
+        }
+        return extra;
+    }
+
+    private String buildClusterLifecycleDisplay(String toolName, Map<String, Object> args) {
+        String name = (String) args.getOrDefault("clusterName", "?");
+        return switch (toolName) {
+            case "start_cluster" -> "cluster: " + name;
+            case "stop_cluster" -> "cluster: " + name;
+            case "create_cluster" -> "cluster: " + name
+                    + "\nworkers: " + args.getOrDefault("workers", 0)
+                    + "\ncpu: " + args.getOrDefault("cpu", 2)
+                    + "\nmemory: " + args.getOrDefault("memory", 2048) + "MB"
+                    + "\ndisk: " + args.getOrDefault("disk", 20) + "GB";
+            default -> "cluster: " + name;
+        };
     }
 }
