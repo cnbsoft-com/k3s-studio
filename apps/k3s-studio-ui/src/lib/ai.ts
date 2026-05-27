@@ -20,6 +20,12 @@ export interface Message {
   createdAt: string;
 }
 
+export interface PreviewPayload {
+  action: "apply_manifest" | "delete_manifest";
+  yaml: string;
+  clusterName: string;
+}
+
 export async function getAiConfig(): Promise<AiModelConfig | null> {
   const res = await api.get<AiModelConfig>("/ai/config");
   return res.status === 204 ? null : res.data;
@@ -49,9 +55,19 @@ export async function getMessages(conversationId: number): Promise<Message[]> {
   return res.data;
 }
 
+export async function confirmManifest(conversationId: number): Promise<{ message: string }> {
+  const res = await api.post<{ message: string }>(`/ai/confirm/${conversationId}`);
+  return res.data;
+}
+
+export async function cancelManifest(conversationId: number): Promise<void> {
+  await api.post(`/ai/cancel/${conversationId}`);
+}
+
 export interface ChatStreamCallbacks {
   onText: (text: string) => void;
   onTool: (toolName: string) => void;
+  onPreview: (payload: PreviewPayload) => void;
   onDone: (conversationId: number) => void;
   onError: (message: string) => void;
 }
@@ -86,12 +102,17 @@ export async function streamChat(
   const dispatchEvent = (eventType: string, data: string) => {
     if (eventType === "tool") {
       callbacks.onTool(data.replace(/^⚙ /, "").replace(/ 실행 중\.\.\.$/, ""));
+    } else if (eventType === "preview") {
+      try {
+        callbacks.onPreview(JSON.parse(data));
+      } catch {
+        callbacks.onError("preview 파싱 오류");
+      }
     } else if (eventType === "done") {
       callbacks.onDone(parseInt(data, 10));
     } else if (eventType === "error") {
       callbacks.onError(data);
     } else {
-      // default "message" event
       callbacks.onText(data);
     }
   };
@@ -101,7 +122,6 @@ export async function streamChat(
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    // SSE events are separated by double newlines
     const events = buffer.split(/\n\n/);
     buffer = events.pop() ?? "";
 

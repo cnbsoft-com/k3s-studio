@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -32,6 +34,11 @@ public class LocalMultipassExecutor implements MultipassExecutor {
     @Override
     public String execRaw(String command) throws IOException, InterruptedException {
         return exec("/bin/sh", "-c", command);
+    }
+
+    @Override
+    public void uploadFile(String remotePath, String content) throws IOException {
+        Files.writeString(Path.of(remotePath), content);
     }
 
     private String[] prepend(String first, String... rest) {

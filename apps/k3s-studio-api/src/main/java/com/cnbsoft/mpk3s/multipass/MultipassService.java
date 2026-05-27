@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -73,19 +74,19 @@ public class MultipassService {
     public void launchMaster(String clusterName, String cpus, String memory, String disk,
                              String image, Map<String, Boolean> options,
                              Consumer<String> logConsumer) throws IOException, InterruptedException {
-        Path cloudInitFile = createMasterCloudInit(clusterName, options);
+        String remotePath = "/tmp/master-cloud-init-" + UUID.randomUUID() + ".yaml";
+        executor.uploadFile(remotePath, buildMasterCloudInit(clusterName, options));
         try {
-            String nodeName = clusterName + "-master";
             executor.execMultipassStreaming(logConsumer,
                     "launch",
-                    "--name", nodeName,
+                    "--name", clusterName + "-master",
                     "--cpus", cpus,
                     "--memory", memory,
                     "--disk", disk,
-                    "--cloud-init", cloudInitFile.toString(),
+                    "--cloud-init", remotePath,
                     image);
         } finally {
-            Files.deleteIfExists(cloudInitFile);
+            try { executor.execRaw("rm -f " + remotePath); } catch (Exception ignored) {}
         }
     }
 
@@ -93,19 +94,19 @@ public class MultipassService {
                              String cpus, String memory, String disk, String image,
                              String masterIp, String nodeToken,
                              Consumer<String> logConsumer) throws IOException, InterruptedException {
-        Path cloudInitFile = createWorkerCloudInit(masterIp, nodeToken);
+        String remotePath = "/tmp/worker-cloud-init-" + UUID.randomUUID() + ".yaml";
+        executor.uploadFile(remotePath, buildWorkerCloudInit(masterIp, nodeToken));
         try {
-            String nodeName = clusterName + "-worker" + workerIndex;
             executor.execMultipassStreaming(logConsumer,
                     "launch",
-                    "--name", nodeName,
+                    "--name", clusterName + "-worker" + workerIndex,
                     "--cpus", cpus,
                     "--memory", memory,
                     "--disk", disk,
-                    "--cloud-init", cloudInitFile.toString(),
+                    "--cloud-init", remotePath,
                     image);
         } finally {
-            Files.deleteIfExists(cloudInitFile);
+            try { executor.execRaw("rm -f " + remotePath); } catch (Exception ignored) {}
         }
     }
 
@@ -247,7 +248,7 @@ public class MultipassService {
         }
     }
 
-    private Path createMasterCloudInit(String clusterName, Map<String, Boolean> options) throws IOException {
+    private String buildMasterCloudInit(String clusterName, Map<String, Boolean> options) {
         StringBuilder exec = new StringBuilder(
                 "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC=\"--cluster-init");
         if (options != null) {
@@ -259,18 +260,12 @@ public class MultipassService {
         }
         exec.append("\" sh -");
 
-        String cloudInit = "#cloud-config\nruncmd:\n  - " + exec + "\n";
-        Path tmp = Files.createTempFile("master-cloud-init-", ".yaml");
-        Files.writeString(tmp, cloudInit);
-        return tmp;
+        return "#cloud-config\nruncmd:\n  - " + exec + "\n";
     }
 
-    private Path createWorkerCloudInit(String masterIp, String nodeToken) throws IOException {
-        String cloudInit = "#cloud-config\nruncmd:\n  - curl -sfL https://get.k3s.io | "
+    private String buildWorkerCloudInit(String masterIp, String nodeToken) {
+        return "#cloud-config\nruncmd:\n  - curl -sfL https://get.k3s.io | "
                 + "K3S_URL=https://" + masterIp + ":6443 K3S_TOKEN=" + nodeToken + " sh -\n";
-        Path tmp = Files.createTempFile("worker-cloud-init-", ".yaml");
-        Files.writeString(tmp, cloudInit);
-        return tmp;
     }
 
     private String buildTlsSanConfig(String masterIp, String domain) {

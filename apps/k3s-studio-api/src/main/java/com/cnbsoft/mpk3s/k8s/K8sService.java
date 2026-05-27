@@ -225,11 +225,35 @@ public class K8sService {
                 status.getHostIP());
     }
 
+    public List<Map<String, Object>> getNodes(String clusterName) throws IOException {
+        KubernetesClient client = client(clusterName);
+        return client.nodes().list().getItems().stream().map(node -> {
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("name", node.getMetadata().getName());
+            String readyStatus = node.getStatus().getConditions().stream()
+                    .filter(c -> "Ready".equals(c.getType()))
+                    .findFirst()
+                    .map(c -> "True".equals(c.getStatus()) ? "Ready" : "NotReady")
+                    .orElse("Unknown");
+            info.put("status", readyStatus);
+            node.getStatus().getAddresses().forEach(addr -> {
+                if ("InternalIP".equals(addr.getType())) info.put("internalIP", addr.getAddress());
+                if ("ExternalIP".equals(addr.getType())) info.put("externalIP", addr.getAddress());
+                if ("Hostname".equals(addr.getType())) info.put("hostname", addr.getAddress());
+            });
+            return info;
+        }).toList();
+    }
+
     private K8sServiceResponse toServiceResponse(io.fabric8.kubernetes.api.model.Service svc) {
         ObjectMeta meta = svc.getMetadata();
         ServiceSpec spec = svc.getSpec();
         String ports = spec.getPorts().stream()
-                .map(p -> p.getPort() + "/" + p.getProtocol())
+                .map(p -> {
+                    String s = p.getPort() + "/" + p.getProtocol();
+                    if (p.getNodePort() != null && p.getNodePort() > 0) s += " (nodePort: " + p.getNodePort() + ")";
+                    return s;
+                })
                 .reduce((a, b) -> a + ", " + b).orElse("-");
         return new K8sServiceResponse(
                 meta.getName(),

@@ -34,6 +34,24 @@ public class AiController {
         return emitter;
     }
 
+    @PostMapping("/confirm/{conversationId}")
+    public ResponseEntity<Map<String, String>> confirm(@PathVariable Long conversationId) {
+        try {
+            String result = aiService.confirmPending(conversationId);
+            return ResponseEntity.ok(Map.of("message", result));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/cancel/{conversationId}")
+    public ResponseEntity<Void> cancel(@PathVariable Long conversationId) {
+        aiService.cancelPending(conversationId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/config")
     public ResponseEntity<AiModelConfig> getConfig() {
         return configRepository.findAll().stream().findFirst()
