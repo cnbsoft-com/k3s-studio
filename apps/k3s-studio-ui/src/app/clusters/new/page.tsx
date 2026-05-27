@@ -10,7 +10,7 @@ import { JobLogViewer } from "@/components/job-log-viewer";
 import { ServerStatusBadge } from "@/components/server-status-badge";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { toast } from "sonner";
-import { ChevronRight, ChevronLeft, Server } from "lucide-react";
+import { ChevronRight, ChevronLeft, Server, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useTranslation } from "@/contexts/I18nContext";
@@ -94,6 +94,15 @@ function NewClusterForm() {
   const selectedServer = servers.find((s) => s.id === values.serverId);
 
   const onSubmit = (data: FormData) => mutation.mutate(data as CreateClusterRequest);
+  const onValidationError = () => toast.error(t("cluster.validation_error"));
+
+  const handleNext = async () => {
+    if (step === 4) {
+      const valid = await form.trigger("ubuntuImage");
+      if (!valid) return;
+    }
+    setStep((s) => s + 1);
+  };
 
   if (jobId) {
     return (
@@ -145,7 +154,7 @@ function NewClusterForm() {
       </div>
       <p className="sm:hidden text-sm text-muted-foreground -mt-2">{STEPS[step]}</p>
 
-      <form onSubmit={form.handleSubmit(onSubmit)}>
+      <form onSubmit={form.handleSubmit(onSubmit, onValidationError)}>
         {/* Step 0: Server selection */}
         {step === 0 && (
           <div className="space-y-3">
@@ -284,12 +293,15 @@ function NewClusterForm() {
             <div>
               <label className="block text-sm font-medium mb-1">{t("cluster.ubuntu_image")}</label>
               <select {...form.register("ubuntuImage")}
-                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background">
+                className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background ${form.formState.errors.ubuntuImage ? "border-destructive" : ""}`}>
                 <option value="">{t("cluster.image_select")}</option>
                 {images.map((img) => (
                   <option key={img} value={img}>{img}</option>
                 ))}
               </select>
+              {form.formState.errors.ubuntuImage && (
+                <p className="text-xs text-destructive mt-1">{t("cluster.image_required")}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">{t("cluster.k3s_components")}</label>
@@ -331,13 +343,14 @@ function NewClusterForm() {
             <ChevronLeft className="h-4 w-4" /> {t("common.previous")}
           </button>
           {step < STEPS.length - 1 ? (
-            <button type="button" onClick={() => setStep((s) => s + 1)}
+            <button type="button" onClick={handleNext}
               className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm hover:bg-primary/90 transition-colors">
               {t("common.next")} <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
             <button type="submit" disabled={mutation.isPending}
-              className="rounded-lg bg-primary text-primary-foreground px-6 py-2 text-sm hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-6 py-2 text-sm hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {mutation.isPending ? t("common.creating") : t("cluster.create")}
             </button>
           )}

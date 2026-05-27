@@ -62,6 +62,27 @@ public class SshMultipassExecutor implements MultipassExecutor {
         }
     }
 
+    @Override
+    public void uploadFile(String remotePath, String content) throws IOException, InterruptedException {
+        log.debug("SSH upload [{}@{}:{}]: {}", username, host, port, remotePath);
+        Path tmpKey = writeTempKey();
+        try (SSHClient ssh = buildClient(tmpKey)) {
+            try (Session session = ssh.startSession()) {
+                Session.Command cmd = session.exec("cat > " + remotePath);
+                cmd.getOutputStream().write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                cmd.getOutputStream().flush();
+                cmd.getOutputStream().close();
+                cmd.join();
+                Integer exitCode = cmd.getExitStatus();
+                if (exitCode != null && exitCode != 0) {
+                    throw new IOException("원격 파일 업로드 실패 (exit=" + exitCode + "): " + remotePath);
+                }
+            }
+        } finally {
+            Files.deleteIfExists(tmpKey);
+        }
+    }
+
     public void execRawStreaming(String command, Consumer<String> logConsumer)
             throws IOException, InterruptedException {
         log.debug("SSH streaming [{}@{}:{}]: {}", username, host, port, command);
@@ -79,7 +100,10 @@ public class SshMultipassExecutor implements MultipassExecutor {
                 cmd.join();
                 Integer exitCode = cmd.getExitStatus();
                 if (exitCode != null && exitCode != 0) {
-                    throw new IOException("SSH command failed (exit=" + exitCode + "): " + command);
+                    String stderr = new String(cmd.getErrorStream().readAllBytes()).trim();
+                    if (!stderr.isBlank()) logConsumer.accept("[ERROR] " + stderr);
+                    throw new IOException("SSH command failed (exit=" + exitCode + "): " + command
+                            + (stderr.isBlank() ? "" : "\n" + stderr));
                 }
             }
         } finally {

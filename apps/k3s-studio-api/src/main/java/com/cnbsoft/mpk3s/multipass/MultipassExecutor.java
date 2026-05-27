@@ -14,4 +14,7 @@ public interface MultipassExecutor {
 
     /** OS 감지 등 임의 명령 실행 */
     String execRaw(String command) throws IOException, InterruptedException;
+
+    /** 원격(또는 로컬) 경로에 파일 내용 업로드 */
+    void uploadFile(String remotePath, String content) throws IOException, InterruptedException;
 }
