@@ -223,7 +223,10 @@ public class AiService {
                     } catch (Exception ignored) {}
                 }
 
-                // 텍스트는 streamModel()에서 이미 실시간으로 전송됨
+                // tool call이 없는 순수 텍스트 응답: SSE로 전송
+                if (!textContent.isBlank()) {
+                    emitter.send(SseEmitter.event().data(textContent));
+                }
                 fullResponse.append(textContent);
                 break;
             }
@@ -299,22 +302,23 @@ public class AiService {
                 yield result;
             }
             case "create_cluster" -> {
-                Long serverId = serverRepository.findAll().stream().findFirst()
-                        .orElseThrow(() -> new IllegalStateException("등록된 서버가 없습니다."))
-                        .getId();
+                // 로컬 서버(serverId=null)를 기본으로 사용 — AI가 서버를 지정하지 않으므로
                 int workers = ((Number) op.extra().getOrDefault("workers", 0)).intValue();
                 int cpu = ((Number) op.extra().getOrDefault("cpu", 2)).intValue();
                 int memory = ((Number) op.extra().getOrDefault("memory", 2048)).intValue();
                 int disk = ((Number) op.extra().getOrDefault("disk", 20)).intValue();
                 ClusterRequest req = new ClusterRequest();
                 req.setName(op.clusterName());
-                req.setServerId(serverId);
+                req.setServerId(null); // null = 로컬 서버
                 req.setWorkerCount(workers);
                 req.setMasterSpec("custom");
                 req.setMasterCpus(cpu);
                 req.setMasterMemory(memory + "MB");
                 req.setMasterDisk(disk + "G");
-                req.setWorkerSpec("small");
+                req.setWorkerSpec("custom");
+                req.setWorkerCpus(cpu);
+                req.setWorkerMemory(memory + "MB");
+                req.setWorkerDisk(disk + "G");
                 req.setUbuntuImage("22.04");
                 java.util.UUID jobId = clusterService.createCluster(req);
                 String result = "클러스터 '" + op.clusterName() + "' 생성 시작 (job: " + jobId + "). list_clusters로 상태를 확인하세요.";
@@ -330,7 +334,6 @@ public class AiService {
     }
 
     private void saveManifestMessage(Long conversationId, String action, String yaml, String result) {
-        String role = "apply_manifest".equals(action) ? "적용" : "삭제";
         Message msg = new Message();
         msg.setConversationId(conversationId);
         msg.setRole("assistant");
@@ -418,11 +421,10 @@ public class AiService {
                             String reason = chunk.path("choices").path(0).path("finish_reason").asText(null);
                             if (reason != null && !reason.isBlank() && !"null".equals(reason)) finishReason[0] = reason;
 
-                            // 텍스트 청크: 즉시 전송
+                            // 텍스트 청크: 버퍼링만 (tool call 여부 확인 후 caller에서 전송)
                             String content = delta.path("content").asText(null);
                             if (content != null && !content.isEmpty()) {
                                 textBuffer.append(content);
-                                emitter.send(SseEmitter.event().data(content));
                             }
 
                             // tool_calls 청크: 인덱스별 누적

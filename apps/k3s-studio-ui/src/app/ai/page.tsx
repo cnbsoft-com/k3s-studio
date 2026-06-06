@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Square, Plus, Bot, Settings, Loader2, Trash2, Pencil, Check, X, AlertTriangle, Copy, Menu } from "lucide-react";
+import { Send, Square, Plus, Bot, Settings, Loader2, Trash2, Pencil, Check, X, AlertTriangle, Copy, Menu, Download } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -48,6 +48,7 @@ export default function AiPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const prevConversationIdRef = useRef<number | null>(null);
 
   const apiKey =
     typeof window !== "undefined" ? sessionStorage.getItem("ai_api_key") : null;
@@ -67,9 +68,12 @@ export default function AiPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeTool, pendingPreview]);
 
-  // 대화 전환 시 pending preview 자동 취소
+  // 대화 전환 시 pending preview 자동 취소 (null→새ID는 첫 메시지 완료이므로 제외)
   useEffect(() => {
-    if (pendingPreview && previewStatus === "pending" && activeConversationId !== null) {
+    const prevId = prevConversationIdRef.current;
+    prevConversationIdRef.current = activeConversationId;
+    if (pendingPreview && previewStatus === "pending" &&
+        prevId !== null && activeConversationId !== null && prevId !== activeConversationId) {
       cancelManifest(activeConversationId).catch(() => {});
       setPendingPreview(null);
       setPreviewStatus(null);
@@ -114,6 +118,22 @@ export default function AiPage() {
     setPreviewReady(false);
   };
 
+  const handleSaveConversation = async (c: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const msgs = await getMessages(c.id);
+    const lines = msgs.map((m) =>
+      `[${m.role.toUpperCase()}] ${new Date(m.createdAt).toLocaleString()}\n${m.content}`
+    );
+    const content = `# ${c.title ?? `Conversation #${c.id}`}\n\n` + lines.join("\n\n---\n\n");
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `conversation-${c.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const startEditing = (c: Conversation, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(c.id);
@@ -134,7 +154,9 @@ export default function AiPage() {
       setPreviewStatus("done");
       setPreviewMessage(res.message);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "오류 발생";
+      const axiosError = e as { response?: { data?: { error?: string } } };
+      const msg = axiosError?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "오류 발생");
       setPreviewStatus("error");
       setPreviewMessage(msg);
     }
@@ -294,6 +316,13 @@ export default function AiPage() {
                   {c.title ?? `#${c.id} ${new Date(c.createdAt).toLocaleDateString()}`}
                 </button>
                 <div className="hidden group-hover:flex items-center gap-0.5 pr-1 shrink-0">
+                  <button
+                    onClick={(e) => handleSaveConversation(c, e)}
+                    className="p-0.5 rounded hover:text-foreground"
+                    title="대화 저장"
+                  >
+                    <Download className="w-3 h-3" />
+                  </button>
                   <button
                     onClick={(e) => startEditing(c, e)}
                     className="p-0.5 rounded hover:text-foreground"
@@ -532,13 +561,18 @@ export default function AiPage() {
 
         {/* Input */}
         <div className="border-t px-4 py-3">
-          <div className="flex gap-2">
-            <input
-              className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          <div className="flex gap-2 items-end">
+            <textarea
+              className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 resize-none min-h-[38px] max-h-[160px] overflow-y-auto"
               placeholder={t("ai.placeholder")}
               value={input}
+              rows={1}
               disabled={streaming || configMissing === true}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

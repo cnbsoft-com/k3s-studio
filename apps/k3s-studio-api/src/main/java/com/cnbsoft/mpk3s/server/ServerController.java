@@ -2,6 +2,7 @@ package com.cnbsoft.mpk3s.server;
 
 import com.cnbsoft.mpk3s.cluster.ClusterService;
 import com.cnbsoft.mpk3s.cluster.DiscoveredCluster;
+import com.cnbsoft.mpk3s.multipass.NetworkInterfaceInfo;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -64,5 +65,15 @@ public class ServerController {
     @GetMapping("/{id}/discover-clusters")
     public List<DiscoveredCluster> discoverClusters(@PathVariable Long id) throws Exception {
         return clusterService.discoverClusters(id);
+    }
+
+    @GetMapping("/{id}/networks")
+    public List<NetworkInterfaceInfo> getNetworks(@PathVariable Long id) {
+        return clusterService.getServerNetworks(id);
+    }
+
+    @GetMapping("/local/networks")
+    public List<NetworkInterfaceInfo> getLocalNetworks() {
+        return clusterService.getServerNetworks(null);
     }
 }

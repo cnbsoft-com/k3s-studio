@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createCluster, getImages, getServers, CreateClusterRequest } from "@/lib/api";
+import { createCluster, getImages, getServers, getServerNetworks, CreateClusterRequest, NetworkInterfaceInfo } from "@/lib/api";
 import { JobLogViewer } from "@/components/job-log-viewer";
 import { ServerStatusBadge } from "@/components/server-status-badge";
 import { Breadcrumb } from "@/components/breadcrumb";
@@ -29,6 +29,8 @@ const schema = z.object({
   workerDisk: z.string().optional(),
   ubuntuImage: z.string().min(1),
   options: z.record(z.boolean()),
+  networkInterface: z.string().optional(),
+  networkInterfaceCidr: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -59,11 +61,13 @@ function NewClusterForm() {
     t("cluster.step.master"),
     t("cluster.step.worker"),
     t("cluster.step.image"),
+    t("cluster.step.network"),
     t("cluster.step.review"),
   ];
 
   const [step, setStep] = useState(defaultServerId !== null ? 1 : 0);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [networks, setNetworks] = useState<NetworkInterfaceInfo[]>([]);
 
   const { data: images = [] } = useQuery({ queryKey: ["images"], queryFn: getImages });
   const { data: servers = [] } = useQuery({ queryKey: ["servers"], queryFn: getServers });
@@ -78,6 +82,8 @@ function NewClusterForm() {
       workerSpec: "medium",
       ubuntuImage: "",
       options: Object.fromEntries(K3S_COMPONENTS.map((c) => [c.key, true])),
+      networkInterface: "",
+      networkInterfaceCidr: "",
     },
   });
 
@@ -92,8 +98,22 @@ function NewClusterForm() {
 
   const values = form.watch();
   const selectedServer = servers.find((s) => s.id === values.serverId);
+  const selectedNetwork = networks.find((n) => n.name === values.networkInterface);
 
-  const onSubmit = (data: FormData) => mutation.mutate(data as CreateClusterRequest);
+  // 서버 선택 변경 시 네트워크 목록 프리로드
+  useEffect(() => {
+    const serverId = values.serverId ?? null;
+    getServerNetworks(serverId).then(setNetworks).catch(() => setNetworks([]));
+  }, [values.serverId]);
+
+  const onSubmit = (data: FormData) => {
+    const payload: CreateClusterRequest = {
+      ...data,
+      networkInterface: data.networkInterface || undefined,
+      networkInterfaceCidr: data.networkInterfaceCidr || undefined,
+    };
+    mutation.mutate(payload);
+  };
   const onValidationError = () => toast.error(t("cluster.validation_error"));
 
   const handleNext = async () => {
@@ -102,6 +122,13 @@ function NewClusterForm() {
       if (!valid) return;
     }
     setStep((s) => s + 1);
+  };
+
+  // 네트워크 인터페이스 선택 시 CIDR 자동 설정
+  const handleNetworkChange = (ifaceName: string) => {
+    form.setValue("networkInterface", ifaceName);
+    const found = networks.find((n) => n.name === ifaceName);
+    form.setValue("networkInterfaceCidr", found?.cidr ?? "");
   };
 
   if (jobId) {
@@ -321,8 +348,41 @@ function NewClusterForm() {
           </div>
         )}
 
-        {/* Step 5: Review */}
+        {/* Step 5: Network */}
         {step === 5 && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-3">
+                동일 네트워크 PC에서 클러스터에 직접 접근하려면 물리 인터페이스를 선택하세요. 선택하지 않으면 기본 DHCP로 생성됩니다.
+              </p>
+              <label className="block text-sm font-medium mb-1">{t("cluster.step.network")}</label>
+              <select
+                value={values.networkInterface ?? ""}
+                onChange={(e) => handleNetworkChange(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background"
+              >
+                <option value="">브리지 없음 (기본 DHCP)</option>
+                {networks.map((n) => (
+                  <option key={n.name} value={n.name}>
+                    {n.name} — {n.type}{n.cidr ? ` (${n.cidr})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {selectedNetwork?.cidr && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted rounded-lg px-3 py-2">
+                <span>서브넷:</span>
+                <span className="font-medium text-foreground">{selectedNetwork.cidr}</span>
+              </div>
+            )}
+            {networks.length === 0 && (
+              <p className="text-xs text-muted-foreground">네트워크 인터페이스를 불러오는 중이거나 사용 가능한 인터페이스가 없습니다.</p>
+            )}
+          </div>
+        )}
+
+        {/* Step 6: Review */}
+        {step === 6 && (
           <div className="rounded-lg border p-5 space-y-3 text-sm">
             <h3 className="font-medium text-base mb-2">{t("cluster.summary")}</h3>
             <Row label={t("cluster.server")} value={selectedServer?.name ?? t("cluster.unselected")} />
@@ -333,6 +393,10 @@ function NewClusterForm() {
             <Row label={t("cluster.image")} value={values.ubuntuImage} />
             <Row label={t("cluster.k3s_components")}
               value={K3S_COMPONENTS.filter((c) => values.options?.[c.key]).map((c) => c.label).join(", ")} />
+            <Row label={t("cluster.step.network")}
+              value={values.networkInterface
+                ? `${values.networkInterface}${selectedNetwork?.cidr ? ` (${selectedNetwork.cidr})` : ""}`
+                : "브리지 없음"} />
           </div>
         )}
 

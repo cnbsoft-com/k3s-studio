@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -16,7 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 /**
  * Multipass 클러스터 운영 서비스.
@@ -73,18 +78,33 @@ public class MultipassService {
 
     public void launchMaster(String clusterName, String cpus, String memory, String disk,
                              String image, Map<String, Boolean> options,
+                             @Nullable String networkInterface,
                              Consumer<String> logConsumer) throws IOException, InterruptedException {
         String remotePath = "/tmp/master-cloud-init-" + UUID.randomUUID() + ".yaml";
         executor.uploadFile(remotePath, buildMasterCloudInit(clusterName, options));
         try {
-            executor.execMultipassStreaming(logConsumer,
+            List<String> args = new ArrayList<>(Arrays.asList(
                     "launch",
                     "--name", clusterName + "-master",
                     "--cpus", cpus,
                     "--memory", memory,
                     "--disk", disk,
                     "--cloud-init", remotePath,
-                    image);
+                    image));
+            if (networkInterface != null) {
+                args.add("--network");
+                args.add(networkInterface);
+                try {
+                    executor.execMultipassStreaming(logConsumer, args.toArray(String[]::new));
+                    return;
+                } catch (Exception e) {
+                    log.warn("브리지 네트워크 {} 실패, 기본 DHCP로 fallback: {}", networkInterface, e.getMessage());
+                    logConsumer.accept("[WARN] 브리지 네트워크 실패, 기본 DHCP로 진행: " + e.getMessage());
+                    args.remove("--network");
+                    args.remove(networkInterface);
+                }
+            }
+            executor.execMultipassStreaming(logConsumer, args.toArray(String[]::new));
         } finally {
             try { executor.execRaw("rm -f " + remotePath); } catch (Exception ignored) {}
         }
@@ -93,35 +113,64 @@ public class MultipassService {
     public void launchWorker(String clusterName, int workerIndex,
                              String cpus, String memory, String disk, String image,
                              String masterIp, String nodeToken,
+                             @Nullable String networkInterface,
                              Consumer<String> logConsumer) throws IOException, InterruptedException {
         String remotePath = "/tmp/worker-cloud-init-" + UUID.randomUUID() + ".yaml";
         executor.uploadFile(remotePath, buildWorkerCloudInit(masterIp, nodeToken));
         try {
-            executor.execMultipassStreaming(logConsumer,
+            List<String> args = new ArrayList<>(Arrays.asList(
                     "launch",
                     "--name", clusterName + "-worker" + workerIndex,
                     "--cpus", cpus,
                     "--memory", memory,
                     "--disk", disk,
                     "--cloud-init", remotePath,
-                    image);
+                    image));
+            if (networkInterface != null) {
+                args.add("--network");
+                args.add(networkInterface);
+                try {
+                    executor.execMultipassStreaming(logConsumer, args.toArray(String[]::new));
+                    return;
+                } catch (Exception e) {
+                    log.warn("워커 브리지 네트워크 {} 실패, 기본 DHCP로 fallback: {}", networkInterface, e.getMessage());
+                    logConsumer.accept("[WARN] 워커 브리지 네트워크 실패, 기본 DHCP로 진행: " + e.getMessage());
+                    args.remove("--network");
+                    args.remove(networkInterface);
+                }
+            }
+            executor.execMultipassStreaming(logConsumer, args.toArray(String[]::new));
         } finally {
             try { executor.execRaw("rm -f " + remotePath); } catch (Exception ignored) {}
         }
     }
 
     public String getMasterIp(String clusterName) throws IOException, InterruptedException {
-        try {
-            MultipassNode master = getNode(clusterName + "-master");
-            return master.getIpv4();
-        } catch (IOException e) {
-            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
-                throw new IOException(
-                        "마스터 노드 '" + clusterName + "-master' 가 Multipass에 존재하지 않습니다. " +
-                        "인스턴스 상태를 확인하거나 클러스터를 재생성하세요.");
+        return getMasterIp(clusterName, null);
+    }
+
+    public String getMasterIp(String clusterName, @Nullable String bridgeCidr) throws IOException, InterruptedException {
+        String nodeName = clusterName + "-master";
+        for (int attempt = 0; attempt < 30; attempt++) {
+            try {
+                MultipassNode master = getNode(nodeName);
+                if (bridgeCidr != null && master.getIpv4Addresses() != null) {
+                    String matched = findIpInCidr(master.getIpv4Addresses(), bridgeCidr);
+                    if (matched != null) return matched;
+                }
+                String ip = master.getIpv4();
+                if (ip != null && !ip.isBlank()) return ip;
+            } catch (IOException e) {
+                if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                    throw new IOException(
+                            "마스터 노드 '" + nodeName + "' 가 Multipass에 존재하지 않습니다. " +
+                            "인스턴스 상태를 확인하거나 클러스터를 재생성하세요.");
+                }
+                throw e;
             }
-            throw e;
+            Thread.sleep(2000);
         }
+        throw new IOException("마스터 노드 '" + nodeName + "' 의 IP를 60초 내에 가져올 수 없습니다.");
     }
 
     public String getNodeToken(String clusterName) throws IOException, InterruptedException {
@@ -144,9 +193,13 @@ public class MultipassService {
     }
 
     public void saveKubeconfig(String clusterName, String kubeconfig) throws IOException {
+        saveKubeconfig(clusterName, kubeconfig, null);
+    }
+
+    public void saveKubeconfig(String clusterName, String kubeconfig, @Nullable String bridgeCidr) throws IOException {
         Path kubeconfigPath = Path.of(kubeconfigDir, "config-" + clusterName);
         Files.createDirectories(kubeconfigPath.getParent());
-        String masterIp = getMasterIpSafe(clusterName);
+        String masterIp = getMasterIpSafe(clusterName, bridgeCidr);
         String content = kubeconfig.replace("127.0.0.1", masterIp);
         Files.writeString(kubeconfigPath, content);
     }
@@ -159,14 +212,72 @@ public class MultipassService {
 
     public void applyTlsSan(String clusterName, String domain, Consumer<String> logConsumer)
             throws IOException, InterruptedException {
-        String masterIp = getMasterIp(clusterName);
-        String config = buildTlsSanConfig(masterIp, domain);
+        applyTlsSan(clusterName, domain, null, logConsumer);
+    }
 
+    public void applyTlsSan(String clusterName, @Nullable String domain,
+                            @Nullable String nodeIp, Consumer<String> logConsumer)
+            throws IOException, InterruptedException {
+        List<String> tlsSans = new ArrayList<>();
+        if (nodeIp != null) tlsSans.add(nodeIp);
+        if (domain != null && !domain.isBlank()) tlsSans.add(domain);
+
+        StringBuilder config = new StringBuilder();
+        if (nodeIp != null) {
+            config.append("node-ip: ").append(nodeIp).append("\n");
+        }
+        if (!tlsSans.isEmpty()) {
+            config.append("tls-san:\n");
+            for (String s : tlsSans) {
+                config.append("  - ").append(s).append("\n");
+            }
+        }
+
+        String configContent = config.toString();
         executor.execMultipass("exec", clusterName + "-master", "--", "bash", "-c",
-                "echo '" + config + "' | sudo tee /etc/rancher/k3s/config.yaml");
+                "echo '" + configContent + "' | sudo tee /etc/rancher/k3s/config.yaml");
         executor.execMultipass("exec", clusterName + "-master", "--",
                 "sudo", "systemctl", "restart", "k3s");
-        logConsumer.accept("TLS SAN 설정 적용 완료 (domain=" + domain + ", masterIp=" + masterIp + ")");
+        logConsumer.accept("TLS SAN 설정 적용 완료 (domain=" + domain + ", nodeIp=" + nodeIp + ")");
+    }
+
+    public void waitForK3sReady(String vmName) throws InterruptedException {
+        for (int i = 0; i < 20; i++) {
+            try {
+                executor.execMultipass("exec", vmName, "--",
+                        "sudo", "k3s", "kubectl", "get", "--raw=/readyz");
+                return;
+            } catch (Exception e) {
+                Thread.sleep(3000);
+            }
+        }
+        throw new RuntimeException("k3s did not become ready after applyTlsSan restart (vmName=" + vmName + ")");
+    }
+
+    public List<NetworkInterfaceInfo> getNetworkInterfaces() throws IOException, InterruptedException {
+        String networksJson = executor.execMultipass("networks", "--format", "json");
+        JsonNode root = objectMapper.readTree(networksJson);
+        JsonNode list = root.path("list");
+
+        String os;
+        try {
+            os = executor.execRaw("uname -s").trim();
+        } catch (Exception e) {
+            os = "Linux";
+        }
+
+        List<NetworkInterfaceInfo> result = new ArrayList<>();
+        if (list.isArray()) {
+            for (JsonNode item : list) {
+                String type = item.path("type").asText("");
+                if (!"physical".equals(type) && !"bridge".equals(type)) continue;
+
+                String name = item.path("name").asText();
+                String cidr = resolveCidr(name, os);
+                result.add(new NetworkInterfaceInfo(name, type, cidr));
+            }
+        }
+        return result;
     }
 
     // ── node / cluster control ─────────────────────────────────────────────
@@ -241,11 +352,108 @@ public class MultipassService {
     // ── private helpers ────────────────────────────────────────────────────
 
     private String getMasterIpSafe(String clusterName) {
+        return getMasterIpSafe(clusterName, null);
+    }
+
+    private String getMasterIpSafe(String clusterName, @Nullable String bridgeCidr) {
         try {
-            return getMasterIp(clusterName);
+            return getMasterIp(clusterName, bridgeCidr);
         } catch (Exception e) {
             return "127.0.0.1";
         }
+    }
+
+    /**
+     * CIDR 표기(예: "192.168.1.0/24")에 속하는 IP를 목록에서 찾아 반환.
+     * 매칭 실패 시 null 반환.
+     */
+    private String findIpInCidr(List<String> addresses, String cidr) {
+        if (cidr == null || cidr.isBlank() || addresses == null) return null;
+        try {
+            String[] parts = cidr.split("/");
+            if (parts.length != 2) return null;
+            int prefixLen = Integer.parseInt(parts[1].trim());
+            byte[] networkBytes = InetAddress.getByName(parts[0].trim()).getAddress();
+            int mask = prefixLen == 0 ? 0 : (0xFFFFFFFF << (32 - prefixLen));
+
+            for (String addr : addresses) {
+                try {
+                    byte[] addrBytes = InetAddress.getByName(addr.trim()).getAddress();
+                    if (addrBytes.length != 4) continue;
+                    int networkInt = toInt(networkBytes) & mask;
+                    int addrInt = toInt(addrBytes) & mask;
+                    if (networkInt == addrInt) return addr.trim();
+                } catch (UnknownHostException ignored) {}
+            }
+        } catch (Exception e) {
+            log.debug("CIDR 매칭 실패 cidr={}: {}", cidr, e.getMessage());
+        }
+        return null;
+    }
+
+    private int toInt(byte[] bytes) {
+        return ((bytes[0] & 0xFF) << 24) | ((bytes[1] & 0xFF) << 16)
+             | ((bytes[2] & 0xFF) << 8)  |  (bytes[3] & 0xFF);
+    }
+
+    /**
+     * 인터페이스 이름으로 CIDR 조회.
+     * macOS: ifconfig <iface> → inet <ip> netmask <hex>
+     * Linux: ip -o -4 addr show <iface> → inet <ip>/<prefix>
+     */
+    private String resolveCidr(String iface, String os) {
+        try {
+            if ("Darwin".equals(os)) {
+                String out = executor.execRaw("ifconfig " + iface);
+                for (String line : out.split("\n")) {
+                    line = line.trim();
+                    if (line.startsWith("inet ") && !line.startsWith("inet6")) {
+                        String[] tokens = line.split("\\s+");
+                        // tokens: [inet, <ip>, netmask, <hex_mask>]
+                        if (tokens.length >= 4 && "netmask".equals(tokens[2])) {
+                            String ip = tokens[1];
+                            String hexMask = tokens[3];
+                            int prefix = hexMaskToPrefixLen(hexMask);
+                            String network = toNetworkAddress(ip, prefix);
+                            return network + "/" + prefix;
+                        }
+                    }
+                }
+            } else {
+                String out = executor.execRaw("ip -o -4 addr show " + iface);
+                for (String line : out.split("\n")) {
+                    // tokens: [<idx>, <iface>, inet, <ip>/<prefix>, ...]
+                    String[] tokens = line.trim().split("\\s+");
+                    for (int i = 0; i < tokens.length - 1; i++) {
+                        if ("inet".equals(tokens[i]) && tokens[i + 1].contains("/")) {
+                            String[] ipParts = tokens[i + 1].split("/");
+                            String ip = ipParts[0];
+                            int prefix = Integer.parseInt(ipParts[1]);
+                            String network = toNetworkAddress(ip, prefix);
+                            return network + "/" + prefix;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("CIDR 조회 실패 iface={}: {}", iface, e.getMessage());
+        }
+        return null;
+    }
+
+    private int hexMaskToPrefixLen(String hex) {
+        String clean = hex.startsWith("0x") || hex.startsWith("0X") ? hex.substring(2) : hex;
+        long mask = Long.parseLong(clean, 16);
+        return Integer.bitCount((int) mask);
+    }
+
+    private String toNetworkAddress(String ip, int prefix) throws UnknownHostException {
+        byte[] addr = InetAddress.getByName(ip).getAddress();
+        int mask = prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix));
+        int network = toInt(addr) & mask;
+        return String.format("%d.%d.%d.%d",
+                (network >> 24) & 0xFF, (network >> 16) & 0xFF,
+                (network >> 8) & 0xFF, network & 0xFF);
     }
 
     private String buildMasterCloudInit(String clusterName, Map<String, Boolean> options) {
@@ -268,12 +476,6 @@ public class MultipassService {
                 + "K3S_URL=https://" + masterIp + ":6443 K3S_TOKEN=" + nodeToken + " sh -\n";
     }
 
-    private String buildTlsSanConfig(String masterIp, String domain) {
-        StringBuilder sb = new StringBuilder("tls-san:\n  - " + masterIp + "\n");
-        if (domain != null && !domain.isBlank()) sb.append("  - ").append(domain).append("\n");
-        return sb.toString();
-    }
-
     private List<MultipassNode> parseNodeList(String json) throws IOException {
         JsonNode root = objectMapper.readTree(json);
         List<MultipassNode> nodes = new ArrayList<>();
@@ -283,8 +485,10 @@ public class MultipassService {
                 MultipassNode node = new MultipassNode();
                 node.setName(item.path("name").asText());
                 node.setState(item.path("state").asText());
-                JsonNode ipv4 = item.path("ipv4");
-                if (ipv4.isArray() && !ipv4.isEmpty()) node.setIpv4(ipv4.get(0).asText());
+                List<String> allIps = StreamSupport.stream(item.path("ipv4").spliterator(), false)
+                        .map(JsonNode::asText).collect(Collectors.toList());
+                node.setIpv4Addresses(allIps);
+                node.setIpv4(allIps.isEmpty() ? null : allIps.get(0));
                 node.setImage(item.path("release").asText());
                 nodes.add(node);
             }
@@ -298,8 +502,10 @@ public class MultipassService {
         MultipassNode node = new MultipassNode();
         node.setName(nodeName);
         node.setState(info.path("state").asText());
-        JsonNode ipv4 = info.path("ipv4");
-        if (ipv4.isArray() && !ipv4.isEmpty()) node.setIpv4(ipv4.get(0).asText());
+        List<String> allIps = StreamSupport.stream(info.path("ipv4").spliterator(), false)
+                .map(JsonNode::asText).collect(Collectors.toList());
+        node.setIpv4Addresses(allIps);
+        node.setIpv4(allIps.isEmpty() ? null : allIps.get(0));
         node.setImage(info.path("image_hash").asText());
 
         JsonNode cpu = info.path("cpu_count");

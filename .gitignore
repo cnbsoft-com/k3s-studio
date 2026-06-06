@@ -52,3 +52,8 @@ apps/mpk3s-ui/node_modules/
 
 # Local analysis files
 YC_Application_Analysis.html
+# OMC tooling state
+.omc/
+
+# Local env
+.env.local

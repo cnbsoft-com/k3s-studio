@@ -44,6 +44,13 @@ public class Cluster {
     @Column(columnDefinition = "jsonb")
     private Map<String, Boolean> options;
 
+    // 브리지 네트워크 (선택 사항) — null이면 기존 DHCP 동작
+    @Column(nullable = true)
+    private String networkInterface;
+
+    @Column(nullable = true)
+    private String networkInterfaceCidr;
+
     @Column(updatable = false)
     private OffsetDateTime createdAt;
 

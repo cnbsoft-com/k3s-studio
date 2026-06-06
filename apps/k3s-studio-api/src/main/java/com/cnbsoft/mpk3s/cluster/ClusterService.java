@@ -7,6 +7,7 @@ import com.cnbsoft.mpk3s.job.JobType;
 import com.cnbsoft.mpk3s.multipass.MultipassExecutorFactory;
 import com.cnbsoft.mpk3s.multipass.MultipassNode;
 import com.cnbsoft.mpk3s.multipass.MultipassService;
+import com.cnbsoft.mpk3s.multipass.NetworkInterfaceInfo;
 import com.cnbsoft.mpk3s.server.ServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -76,6 +77,15 @@ public class ClusterService {
         return serviceFor(cluster).listClusterNodes(name);
     }
 
+    public List<NetworkInterfaceInfo> getServerNetworks(Long serverId) {
+        try {
+            return serviceForServerId(serverId).getNetworkInterfaces();
+        } catch (Exception e) {
+            log.warn("네트워크 인터페이스 조회 실패 (serverId={}): {}", serverId, e.getMessage());
+            return List.of();
+        }
+    }
+
     @Transactional
     public UUID createCluster(ClusterRequest req) {
         if (clusterRepository.existsByName(req.getName())) {
@@ -93,6 +103,8 @@ public class ClusterService {
         cluster.setWorkerCount(req.getWorkerCount());
         cluster.setUbuntuImage(req.getUbuntuImage());
         cluster.setOptions(req.getOptions());
+        cluster.setNetworkInterface(req.getNetworkInterface());
+        cluster.setNetworkInterfaceCidr(req.getNetworkInterfaceCidr());
         clusterRepository.save(cluster);
 
         Job job = jobService.createJob(req.getName(), JobType.CREATE_CLUSTER);
@@ -110,11 +122,25 @@ public class ClusterService {
 
             jobService.appendLog(jobId, "마스터 노드 생성 중: " + req.getName() + "-master");
             svc.launchMaster(req.getName(), masterSpec[0], masterSpec[1], masterSpec[2],
-                    req.getUbuntuImage(), req.getOptions(),
+                    req.getUbuntuImage(), req.getOptions(), req.getNetworkInterface(),
                     line -> jobService.appendLog(jobId, line));
 
-            String masterIp = svc.getMasterIp(req.getName());
-            jobService.appendLog(jobId, "마스터 IP: " + masterIp);
+            String masterIp;
+            if (req.getNetworkInterface() != null) {
+                // 브리지 모드: CIDR 매칭으로 LAN IP 확정
+                String bridgeCidr = req.getNetworkInterfaceCidr();
+                masterIp = svc.getMasterIp(req.getName(), bridgeCidr);
+                if ("127.0.0.1".equals(masterIp)) {
+                    jobService.appendLog(jobId, "[WARN] 브리지 IP를 확정하지 못해 localhost로 kubeconfig가 저장됩니다.");
+                }
+                jobService.appendLog(jobId, "마스터 IP (브리지): " + masterIp);
+                svc.applyTlsSan(req.getName(), null, masterIp, line -> jobService.appendLog(jobId, line));
+                svc.waitForK3sReady(req.getName() + "-master");
+            } else {
+                // 비브리지 모드: 기존 동작 그대로
+                masterIp = svc.getMasterIp(req.getName());
+                jobService.appendLog(jobId, "마스터 IP: " + masterIp);
+            }
 
             String nodeToken = svc.getNodeToken(req.getName());
 
@@ -125,12 +151,12 @@ public class ClusterService {
                 jobService.appendLog(jobId, "워커 노드 생성 중: " + req.getName() + "-worker" + i);
                 svc.launchWorker(req.getName(), i,
                         workerSpec[0], workerSpec[1], workerSpec[2],
-                        req.getUbuntuImage(), masterIp, nodeToken,
+                        req.getUbuntuImage(), masterIp, nodeToken, req.getNetworkInterface(),
                         line -> jobService.appendLog(jobId, line));
             }
 
             String kubeconfig = svc.getKubeconfig(req.getName());
-            svc.saveKubeconfig(req.getName(), kubeconfig);
+            svc.saveKubeconfig(req.getName(), kubeconfig, req.getNetworkInterfaceCidr());
             jobService.appendLog(jobId, "kubeconfig 저장 완료");
 
             updateClusterStatus(req.getName(), ClusterStatus.RUNNING);
@@ -181,17 +207,19 @@ public class ClusterService {
 
         Job job = jobService.createJob(clusterName, JobType.ADD_WORKER);
         doAddWorkers(job.getId(), clusterName, cluster.getWorkerCount(),
-                cluster.getUbuntuImage(), req, cluster.getServerId());
+                cluster.getUbuntuImage(), req, cluster.getServerId(),
+                cluster.getNetworkInterface(), cluster.getNetworkInterfaceCidr());
         return job.getId();
     }
 
     @Async("clusterTaskExecutor")
     public void doAddWorkers(UUID jobId, String clusterName, int currentWorkerCount,
-                              String image, WorkerRequest req, Long serverId) {
+                              String image, WorkerRequest req, Long serverId,
+                              String networkInterface, String networkInterfaceCidr) {
         jobService.start(jobId);
         MultipassService svc = serviceForServerId(serverId);
         try {
-            String masterIp = svc.getMasterIp(clusterName);
+            String masterIp = svc.getMasterIp(clusterName, networkInterfaceCidr);
             String nodeToken = svc.getNodeToken(clusterName);
             String[] spec = resolveSpec(req.getWorkerSpec(), req.getWorkerCpus(),
                     req.getWorkerMemory(), req.getWorkerDisk());
@@ -200,7 +228,7 @@ public class ClusterService {
                 int idx = currentWorkerCount + i;
                 jobService.appendLog(jobId, "워커 노드 생성 중: " + clusterName + "-worker" + idx);
                 svc.launchWorker(clusterName, idx,
-                        spec[0], spec[1], spec[2], image, masterIp, nodeToken,
+                        spec[0], spec[1], spec[2], image, masterIp, nodeToken, networkInterface,
                         line -> jobService.appendLog(jobId, line));
             }
 
@@ -257,7 +285,7 @@ public class ClusterService {
         jobService.start(jobId);
         MultipassService svc = serviceForServerId(serverId);
         try {
-            svc.applyTlsSan(clusterName, domain, line -> jobService.appendLog(jobId, line));
+            svc.applyTlsSan(clusterName, domain, null, line -> jobService.appendLog(jobId, line));
             jobService.complete(jobId);
         } catch (Exception e) {
             log.error("Add TLS failed: {}", clusterName, e);
