@@ -11,6 +11,7 @@ import com.cnbsoft.mpk3s.multipass.NetworkInterfaceInfo;
 import com.cnbsoft.mpk3s.server.ServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,8 @@ public class ClusterService {
     private final MultipassService multipassService;
     private final MultipassExecutorFactory executorFactory;
     private final ServerRepository serverRepository;
+    /** 같은 빈 내 @Async 메서드를 프록시 경유로 호출하기 위한 self 참조 (self-invocation 시 @Async 우회 방지) */
+    private final ObjectProvider<ClusterService> self;
 
     @Value("${multipass.kubeconfig-dir:${user.home}/.kube}")
     private String kubeconfigDir;
@@ -108,7 +111,7 @@ public class ClusterService {
         clusterRepository.save(cluster);
 
         Job job = jobService.createJob(req.getName(), JobType.CREATE_CLUSTER);
-        doCreateCluster(job.getId(), req);
+        self.getObject().doCreateCluster(job.getId(), req);
         return job.getId();
     }
 
@@ -177,7 +180,7 @@ public class ClusterService {
         clusterRepository.save(cluster);
 
         Job job = jobService.createJob(name, JobType.DELETE_CLUSTER);
-        doDeleteCluster(job.getId(), name, cluster.getServerId());
+        self.getObject().doDeleteCluster(job.getId(), name, cluster.getServerId());
         return job.getId();
     }
 
@@ -206,7 +209,7 @@ public class ClusterService {
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
 
         Job job = jobService.createJob(clusterName, JobType.ADD_WORKER);
-        doAddWorkers(job.getId(), clusterName, cluster.getWorkerCount(),
+        self.getObject().doAddWorkers(job.getId(), clusterName, cluster.getWorkerCount(),
                 cluster.getUbuntuImage(), req, cluster.getServerId(),
                 cluster.getNetworkInterface(), cluster.getNetworkInterfaceCidr());
         return job.getId();
@@ -248,7 +251,7 @@ public class ClusterService {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
         Job job = jobService.createJob(clusterName, JobType.DELETE_WORKER);
-        doDeleteWorker(job.getId(), clusterName, workerName, cluster.getServerId());
+        self.getObject().doDeleteWorker(job.getId(), clusterName, workerName, cluster.getServerId());
         return job.getId();
     }
 
@@ -276,7 +279,7 @@ public class ClusterService {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
         Job job = jobService.createJob(clusterName, JobType.ADD_TLS);
-        doAddTls(job.getId(), clusterName, req.getDomain(), cluster.getServerId());
+        self.getObject().doAddTls(job.getId(), clusterName, req.getDomain(), cluster.getServerId());
         return job.getId();
     }
 

@@ -250,7 +250,7 @@ public class AiService {
         } catch (Exception e) {
             log.error("AI chat error", e);
             try {
-                emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
+                emitter.send(SseEmitter.event().name("error").data(friendlyAiError(e)));
                 emitter.complete();
             } catch (IOException ignored) {}
         }
@@ -302,14 +302,23 @@ public class AiService {
                 yield result;
             }
             case "create_cluster" -> {
-                // 로컬 서버(serverId=null)를 기본으로 사용 — AI가 서버를 지정하지 않으므로
                 int workers = ((Number) op.extra().getOrDefault("workers", 0)).intValue();
                 int cpu = ((Number) op.extra().getOrDefault("cpu", 2)).intValue();
                 int memory = ((Number) op.extra().getOrDefault("memory", 2048)).intValue();
                 int disk = ((Number) op.extra().getOrDefault("disk", 20)).intValue();
+                // 대상 서버 해석: serverName 지정 시 해당 서버, 미지정 시 로컬(null)
+                Long serverId = null;
+                Object serverNameObj = op.extra().get("serverName");
+                if (serverNameObj != null && !serverNameObj.toString().isBlank()) {
+                    String serverName = serverNameObj.toString().trim();
+                    var target = serverRepository.findByName(serverName)
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "서버 '" + serverName + "'를 찾을 수 없습니다. list_servers로 등록된 서버를 확인하세요."));
+                    serverId = target.isLocal() ? null : target.getId();
+                }
                 ClusterRequest req = new ClusterRequest();
                 req.setName(op.clusterName());
-                req.setServerId(null); // null = 로컬 서버
+                req.setServerId(serverId);
                 req.setWorkerCount(workers);
                 req.setMasterSpec("custom");
                 req.setMasterCpus(cpu);
@@ -369,7 +378,12 @@ public class AiService {
                 리소스 생성/삭제 요청 시 규칙:
                 - YAML을 텍스트로 출력하지 마세요. 반드시 apply_manifest 또는 delete_manifest 도구를 호출하세요.
                 - 사용자가 생성/배포/삭제를 요청하면 즉시 해당 도구를 호출하세요. 먼저 YAML을 보여주거나 확인을 묻지 마세요.
-                - apply_manifest는 서버가 사용자에게 자동으로 미리보기를 보여주고 확인을 요청합니다.
+                - apply_manifest, create_cluster, start_cluster, stop_cluster 등은 서버가 사용자에게 자동으로 미리보기를 보여주고 확인을 요청합니다.
+
+                클러스터 생성(create_cluster) 시 서버 지정 규칙:
+                - 사용자가 특정 서버를 언급하면 serverName 파라미터에 그 서버 이름을 정확히 전달하세요. 예: "mac-mini 서버에 클러스터 생성" → serverName="mac-mini".
+                - 서버를 언급하지 않으면 serverName을 비워두세요 (로컬 서버에 생성됨).
+                - 사용자가 언급한 서버 이름이 등록돼 있는지 확실하지 않으면 먼저 list_servers로 확인하세요.
 
                 NodePort 서비스를 생성(apply_manifest)하여 사용자가 confirm한 후에는 반드시:
                 1. list_services를 호출하여 할당된 nodePort를 확인하세요.
@@ -383,11 +397,31 @@ public class AiService {
     private record StreamResult(String textContent, List<Map<String, Object>> toolCalls, String finishReason) {}
 
     private RestClient buildRestClient(String modelUrl, String apiKey) {
+        // 스트리밍 응답이므로 per-read SO_TIMEOUT을 적용하는 SimpleClientHttpRequestFactory 사용.
+        // 모델이 토큰을 전혀 내지 않고 멈추면 readTimeout 후 SocketTimeoutException으로 깔끔히 실패.
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10_000);
+        factory.setReadTimeout(180_000);
         return RestClient.builder()
+                .requestFactory(factory)
                 .baseUrl(modelUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + (apiKey != null ? apiKey : "ollama"))
                 .build();
+    }
+
+    /** Ollama/모델 호출 예외를 사용자 친화적 한국어 메시지로 변환 */
+    private String friendlyAiError(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        String rm = root.getMessage() == null ? "" : root.getMessage();
+        if (root instanceof java.net.SocketTimeoutException || rm.contains("timed out") || rm.contains("Read timed out")) {
+            return "AI 모델 응답 시간 초과입니다. 모델 서버가 느리거나 응답하지 않습니다. 잠시 후 다시 시도하거나 더 작은 모델로 변경하세요.";
+        }
+        if (root instanceof java.net.ConnectException || rm.contains("Connection refused") || rm.contains("Connection timed out")) {
+            return "AI 모델 서버에 연결할 수 없습니다. 모델 서버 주소와 실행 상태를 확인하세요.";
+        }
+        return "AI 처리 오류: " + (rm.isBlank() ? e.getMessage() : rm);
     }
 
     private StreamResult streamModel(RestClient client, String modelName,
@@ -577,9 +611,10 @@ public class AiService {
                         param("clusterName", "시작할 클러스터 이름")),
                 tool("stop_cluster", "k3s 클러스터 전체 정지 (사용자 확인 후 실행됨)",
                         param("clusterName", "정지할 클러스터 이름")),
-                tool("create_cluster", "새 k3s 클러스터 생성 (사용자 확인 후 실행됨, 기본값: masters=1 workers=0 cpu=2 memory=2048MB disk=20GB)",
+                tool("create_cluster", "새 k3s 클러스터 생성 (사용자 확인 후 실행됨, 기본값: workers=0 cpu=2 memory=2048MB disk=20GB). serverName 미지정 시 로컬 서버에 생성됨",
                         Map.of("type", "object", "properties", Map.of(
                                 "clusterName", strProp("생성할 클러스터 이름"),
+                                "serverName", strProp("생성 대상 서버 이름 (예: local, mac-mini). 미지정 시 로컬 서버"),
                                 "workers", Map.of("type", "integer", "description", "워커 수 (기본값 0)"),
                                 "cpu", Map.of("type", "integer", "description", "마스터 CPU 수 (기본값 2)"),
                                 "memory", Map.of("type", "integer", "description", "마스터 메모리 MB (기본값 2048)"),
@@ -645,16 +680,22 @@ public class AiService {
             extra.put("cpu", args.getOrDefault("cpu", 2));
             extra.put("memory", args.getOrDefault("memory", 2048));
             extra.put("disk", args.getOrDefault("disk", 20));
+            Object serverName = args.get("serverName");
+            if (serverName != null) extra.put("serverName", serverName);
         }
         return extra;
     }
 
     private String buildClusterLifecycleDisplay(String toolName, Map<String, Object> args) {
         String name = (String) args.getOrDefault("clusterName", "?");
+        Object serverNameObj = args.get("serverName");
+        String serverDisplay = (serverNameObj != null && !serverNameObj.toString().isBlank())
+                ? serverNameObj.toString() : "로컬 (기본)";
         return switch (toolName) {
             case "start_cluster" -> "cluster: " + name;
             case "stop_cluster" -> "cluster: " + name;
             case "create_cluster" -> "cluster: " + name
+                    + "\nserver: " + serverDisplay
                     + "\nworkers: " + args.getOrDefault("workers", 0)
                     + "\ncpu: " + args.getOrDefault("cpu", 2)
                     + "\nmemory: " + args.getOrDefault("memory", 2048) + "MB"
