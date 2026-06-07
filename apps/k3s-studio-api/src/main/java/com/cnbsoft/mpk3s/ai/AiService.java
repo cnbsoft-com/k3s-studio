@@ -159,11 +159,11 @@ public class AiService {
                     continue;
                 }
 
-                // Fallback: JSON content에 tool call (비표준 모델 지원)
+                // Fallback: content에 tool call (비표준 모델 — bare JSON, <tool_call> 래핑 등)
                 if (!textContent.isBlank()) {
                     try {
-                        JsonNode parsed = objectMapper.readTree(textContent.trim());
-                        if (parsed.isObject() && parsed.has("name") && parsed.has("arguments")) {
+                        JsonNode parsed = extractToolCallNode(textContent);
+                        if (parsed != null) {
                             String toolName = parsed.path("name").asText();
                             Map<String, Object> args = objectMapper.convertValue(parsed.path("arguments"), new TypeReference<>() {});
 
@@ -422,6 +422,34 @@ public class AiService {
             return "AI 모델 서버에 연결할 수 없습니다. 모델 서버 주소와 실행 상태를 확인하세요.";
         }
         return "AI 처리 오류: " + (rm.isBlank() ? e.getMessage() : rm);
+    }
+
+    /**
+     * content 텍스트에서 tool call JSON({"name":..,"arguments":..})을 추출.
+     * bare JSON, &lt;tool_call&gt;...&lt;/tool_call&gt; 래핑(qwen 등), 주변 텍스트 포함 모두 처리.
+     * tool call이 아니면 null 반환 → 일반 텍스트 응답으로 처리됨.
+     */
+    private JsonNode extractToolCallNode(String text) {
+        if (text == null || text.isBlank()) return null;
+        String t = text.trim();
+        List<String> candidates = new ArrayList<>();
+        // 1) <tool_call>...</tool_call> 안의 JSON
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<tool_call>\\s*(\\{.*?})\\s*</tool_call>", java.util.regex.Pattern.DOTALL)
+                .matcher(t);
+        while (m.find()) candidates.add(m.group(1));
+        // 2) 전체가 bare JSON
+        candidates.add(t);
+        // 3) 첫 '{' ~ 마지막 '}' (주변 텍스트/태그 포함된 경우)
+        int s = t.indexOf('{'), e = t.lastIndexOf('}');
+        if (s >= 0 && e > s) candidates.add(t.substring(s, e + 1));
+        for (String c : candidates) {
+            try {
+                JsonNode n = objectMapper.readTree(c);
+                if (n.isObject() && n.has("name") && n.has("arguments")) return n;
+            } catch (Exception ignored) {}
+        }
+        return null;
     }
 
     private StreamResult streamModel(RestClient client, String modelName,
