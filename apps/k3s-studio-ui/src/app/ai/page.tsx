@@ -261,7 +261,8 @@ export default function AiPage() {
   ];
 
   const isDelete = pendingPreview?.action === "delete_manifest";
-  const isDestructiveCluster = pendingPreview?.action === "stop_cluster";
+  const isClusterDelete = pendingPreview?.action === "delete_cluster";
+  const isDestructiveCluster = pendingPreview?.action === "stop_cluster" || isClusterDelete;
   const isYamlAction = pendingPreview?.action === "apply_manifest" || pendingPreview?.action === "delete_manifest";
 
   const SidebarContent = () => (
@@ -506,6 +507,7 @@ export default function AiPage() {
                     {pendingPreview.action === "start_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 시작할까요?</>}
                     {pendingPreview.action === "stop_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 정지할까요?</>}
                     {pendingPreview.action === "create_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 생성할까요?</>}
+                    {pendingPreview.action === "delete_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 삭제할까요?</>}
                   </span>
                 </div>
                 {previewStatus === "pending" && previewReady && (
@@ -524,7 +526,7 @@ export default function AiPage() {
                           : "bg-blue-500 hover:bg-blue-600"
                       }`}
                     >
-                      {isDelete ? "삭제 확인" : isDestructiveCluster ? "정지 확인" : "확인"}
+                      {(isDelete || isClusterDelete) ? "삭제 확인" : isDestructiveCluster ? "정지 확인" : "확인"}
                     </button>
                   </div>
                 )}
@@ -534,7 +536,7 @@ export default function AiPage() {
                 {previewStatus === "loading" && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    {isDelete ? "삭제 중..." : "적용 중..."}
+                    {(isDelete || isClusterDelete) ? "삭제 중..." : "적용 중..."}
                   </div>
                 )}
                 {(previewStatus === "done" || previewStatus === "error" || previewStatus === "cancelled") && (

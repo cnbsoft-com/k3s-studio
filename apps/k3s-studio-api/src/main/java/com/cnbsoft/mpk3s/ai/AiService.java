@@ -130,7 +130,7 @@ public class AiService {
                             }
                             break;
                         }
-                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName)) {
+                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName)) {
                             String cluster = requireString(args, "clusterName");
                             Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
                             String displayYaml = buildClusterLifecycleDisplay(toolName, args);
@@ -197,7 +197,7 @@ public class AiService {
                                 }
                                 break;
                             }
-                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName)) {
+                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName)) {
                                 String cluster = requireString(args, "clusterName");
                                 Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
                                 String displayYaml = buildClusterLifecycleDisplay(toolName, args);
@@ -301,6 +301,12 @@ public class AiService {
                 saveManifestMessage(conversationId, op.action(), op.yaml(), result);
                 yield result;
             }
+            case "delete_cluster" -> {
+                java.util.UUID jobId = clusterService.deleteCluster(op.clusterName());
+                String result = "클러스터 '" + op.clusterName() + "' 삭제 시작 (job: " + jobId + "). 모든 노드(VM)가 제거됩니다. list_clusters로 상태를 확인하세요.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
             case "create_cluster" -> {
                 int workers = ((Number) op.extra().getOrDefault("workers", 0)).intValue();
                 int cpu = ((Number) op.extra().getOrDefault("cpu", 2)).intValue();
@@ -378,7 +384,8 @@ public class AiService {
                 리소스 생성/삭제 요청 시 규칙:
                 - YAML을 텍스트로 출력하지 마세요. 반드시 apply_manifest 또는 delete_manifest 도구를 호출하세요.
                 - 사용자가 생성/배포/삭제를 요청하면 즉시 해당 도구를 호출하세요. 먼저 YAML을 보여주거나 확인을 묻지 마세요.
-                - apply_manifest, create_cluster, start_cluster, stop_cluster 등은 서버가 사용자에게 자동으로 미리보기를 보여주고 확인을 요청합니다.
+                - apply_manifest, create_cluster, start_cluster, stop_cluster, delete_cluster 등은 서버가 사용자에게 자동으로 미리보기를 보여주고 확인을 요청합니다.
+                - "클러스터 삭제/제거"는 delete_cluster 도구를 사용하세요 (클러스터의 모든 노드 VM 삭제). delete_manifest는 클러스터 안의 K8s 리소스 삭제용이며 클러스터 삭제가 아닙니다 — 혼동하지 마세요.
 
                 클러스터 생성(create_cluster) 시 서버 지정 규칙:
                 - 사용자가 특정 서버를 언급하면 serverName 파라미터에 그 서버 이름을 정확히 전달하세요. 예: "mac-mini 서버에 클러스터 생성" → serverName="mac-mini".
@@ -639,6 +646,8 @@ public class AiService {
                         param("clusterName", "시작할 클러스터 이름")),
                 tool("stop_cluster", "k3s 클러스터 전체 정지 (사용자 확인 후 실행됨)",
                         param("clusterName", "정지할 클러스터 이름")),
+                tool("delete_cluster", "k3s 클러스터 전체 삭제 — 클러스터의 모든 노드(VM)를 영구 제거 (사용자 확인 후 실행됨). 클러스터 자체를 지울 때 사용. K8s 리소스 삭제가 아님",
+                        param("clusterName", "삭제할 클러스터 이름")),
                 tool("create_cluster", "새 k3s 클러스터 생성 (사용자 확인 후 실행됨, 기본값: workers=0 cpu=2 memory=2048MB disk=20GB). serverName 미지정 시 로컬 서버에 생성됨",
                         Map.of("type", "object", "properties", Map.of(
                                 "clusterName", strProp("생성할 클러스터 이름"),
@@ -722,6 +731,7 @@ public class AiService {
         return switch (toolName) {
             case "start_cluster" -> "cluster: " + name;
             case "stop_cluster" -> "cluster: " + name;
+            case "delete_cluster" -> "cluster: " + name + "\n⚠️ 클러스터의 모든 노드(VM)가 영구 삭제됩니다.";
             case "create_cluster" -> "cluster: " + name
                     + "\nserver: " + serverDisplay
                     + "\nworkers: " + args.getOrDefault("workers", 0)

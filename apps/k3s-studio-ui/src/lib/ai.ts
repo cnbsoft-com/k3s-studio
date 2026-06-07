@@ -21,7 +21,7 @@ export interface Message {
 }
 
 export interface PreviewPayload {
-  action: "apply_manifest" | "delete_manifest" | "scale_deployment" | "restart_deployment" | "start_cluster" | "stop_cluster" | "create_cluster";
+  action: "apply_manifest" | "delete_manifest" | "scale_deployment" | "restart_deployment" | "start_cluster" | "stop_cluster" | "create_cluster" | "delete_cluster";
   yaml: string;
   clusterName: string;
 }
