@@ -11,6 +11,7 @@ import com.cnbsoft.mpk3s.multipass.SshMultipassExecutor;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,8 @@ public class ServerService {
     private final EncryptionService encryptionService;
     private final MultipassExecutorFactory executorFactory;
     private final ClusterService clusterService;
+    /** 같은 빈 내 @Async 메서드를 프록시 경유로 호출 (self-invocation 시 @Async 우회 방지) */
+    private final ObjectProvider<ServerService> self;
 
     /** 앱 시작 시 localhost 서버가 없으면 자동 생성. 최초 생성 시 기존 클러스터 자동 감지 */
     @PostConstruct
@@ -140,7 +143,7 @@ public class ServerService {
         serverRepository.save(server);
 
         Job job = jobService.createJob(null, id, JobType.INSTALL_MULTIPASS);
-        doInstallMultipass(job.getId(), id);
+        self.getObject().doInstallMultipass(job.getId(), id);
         return job.getId();
     }
 
