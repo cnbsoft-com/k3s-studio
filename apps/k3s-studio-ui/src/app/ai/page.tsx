@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Square, Plus, Bot, Settings, Loader2, Trash2, Pencil, Check, X, AlertTriangle, Copy, Menu, Download } from "lucide-react";
+import { Send, Square, Plus, Bot, Settings, Loader2, Trash2, Pencil, Check, X, AlertTriangle, Copy, Menu, Download, ThumbsUp, ThumbsDown, Ban } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,8 @@ import {
   updateConversationTitle,
   confirmManifest,
   cancelManifest,
+  rateTrace,
+  excludeTrace,
   type Conversation,
   type PreviewPayload,
 } from "@/lib/ai";
@@ -23,6 +25,7 @@ import {
 interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
+  traceId?: number;
 }
 
 type PreviewStatus = "pending" | "loading" | "done" | "error" | "cancelled";
@@ -40,6 +43,8 @@ export default function AiPage() {
   const [editingTitle, setEditingTitle] = useState("");
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // traceId → 학습 라벨 (👍/👎/제외). 스트리밍 직후 메시지에만 표시
+  const [feedback, setFeedback] = useState<Record<number, { rating?: "up" | "down"; excluded?: boolean }>>({});
 
   const [pendingPreview, setPendingPreview] = useState<PreviewPayload | null>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
@@ -180,6 +185,18 @@ export default function AiPage() {
     });
   };
 
+  const handleRate = (traceId: number, rating: "up" | "down") => {
+    const next = feedback[traceId]?.rating === rating ? undefined : rating;
+    setFeedback((f) => ({ ...f, [traceId]: { ...f[traceId], rating: next } }));
+    if (next) rateTrace(traceId, next).catch(() => {});
+  };
+
+  const handleExclude = (traceId: number) => {
+    const next = !feedback[traceId]?.excluded;
+    setFeedback((f) => ({ ...f, [traceId]: { ...f[traceId], excluded: next } }));
+    excludeTrace(traceId, next).catch(() => {});
+  };
+
   const handleSend = async (text?: string) => {
     const userMessage = (text ?? input).trim();
     if (!userMessage || streaming) return;
@@ -218,6 +235,16 @@ export default function AiPage() {
           setPendingPreview(payload);
           setPreviewStatus("pending");
           setActiveTool(null);
+        },
+        onTrace: (traceId) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === "assistant") {
+              updated[updated.length - 1] = { ...last, traceId };
+            }
+            return updated;
+          });
         },
         onDone: (id) => {
           newConversationId = id;
@@ -467,13 +494,40 @@ export default function AiPage() {
                 ) : null}
               </div>
               {msg.role === "assistant" && msg.content && (
-                <button
-                  onClick={() => handleCopy(msg.content, i)}
-                  className="absolute -bottom-5 right-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent transition-opacity"
-                  title="복사"
-                >
-                  {copiedIndex === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
-                </button>
+                <div className="absolute -bottom-5 right-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleCopy(msg.content, i)}
+                    className="p-1 rounded hover:bg-accent"
+                    title="복사"
+                  >
+                    {copiedIndex === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                  </button>
+                  {msg.traceId != null && (
+                    <>
+                      <button
+                        onClick={() => handleRate(msg.traceId!, "up")}
+                        className="p-1 rounded hover:bg-accent"
+                        title="좋은 응답 (학습 긍정)"
+                      >
+                        <ThumbsUp className={`w-3 h-3 ${feedback[msg.traceId]?.rating === "up" ? "text-green-500" : "text-muted-foreground"}`} />
+                      </button>
+                      <button
+                        onClick={() => handleRate(msg.traceId!, "down")}
+                        className="p-1 rounded hover:bg-accent"
+                        title="나쁜 응답 (학습 부정)"
+                      >
+                        <ThumbsDown className={`w-3 h-3 ${feedback[msg.traceId]?.rating === "down" ? "text-red-500" : "text-muted-foreground"}`} />
+                      </button>
+                      <button
+                        onClick={() => handleExclude(msg.traceId!)}
+                        className="p-1 rounded hover:bg-accent"
+                        title="학습에서 제외"
+                      >
+                        <Ban className={`w-3 h-3 ${feedback[msg.traceId]?.excluded ? "text-orange-500" : "text-muted-foreground"}`} />
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
               </div>
             </div>
@@ -490,7 +544,7 @@ export default function AiPage() {
 
           {/* Manifest 미리보기 카드 */}
           {pendingPreview && (
-            <div className={`w-full rounded-lg border-2 overflow-hidden ${
+            <div className={`w-full rounded-xl border-2 overflow-hidden ${
               (isDelete || isDestructiveCluster) ? "border-red-400 dark:border-red-600" : "border-blue-400 dark:border-blue-600"
             }`}>
               {/* 헤더 + 버튼 */}
@@ -514,16 +568,16 @@ export default function AiPage() {
                   <div className="flex gap-2 shrink-0">
                     <button
                       onClick={handleCancel}
-                      className="px-3 py-1 text-xs border rounded hover:bg-accent transition-colors"
+                      className="px-4 py-1.5 text-xs border border-primary text-primary rounded-pill hover:bg-primary/5 transition-transform active:scale-95"
                     >
                       취소
                     </button>
                     <button
                       onClick={handleConfirm}
-                      className={`px-3 py-1 text-xs text-white rounded transition-colors ${
+                      className={`px-4 py-1.5 text-xs text-white rounded-pill transition-[transform,background-color] active:scale-95 ${
                         (isDelete || isDestructiveCluster)
-                          ? "bg-red-500 hover:bg-red-600"
-                          : "bg-blue-500 hover:bg-blue-600"
+                          ? "bg-destructive hover:bg-destructive/90"
+                          : "bg-primary hover:bg-primary/90"
                       }`}
                     >
                       {(isDelete || isClusterDelete) ? "삭제 확인" : isDestructiveCluster ? "정지 확인" : "확인"}
@@ -565,7 +619,7 @@ export default function AiPage() {
         <div className="border-t px-4 py-3">
           <div className="flex gap-2 items-end">
             <textarea
-              className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 resize-none min-h-[38px] max-h-[160px] overflow-y-auto"
+              className="flex-1 px-4 py-2 text-sm border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 resize-none min-h-[38px] max-h-[160px] overflow-y-auto"
               placeholder={t("ai.placeholder")}
               value={input}
               rows={1}
@@ -585,7 +639,7 @@ export default function AiPage() {
             {streaming ? (
               <button
                 onClick={handleStop}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-pill hover:bg-destructive/90 transition-[transform,background-color] active:scale-95"
               >
                 <Square className="w-4 h-4" />
                 중단
@@ -594,7 +648,7 @@ export default function AiPage() {
               <button
                 onClick={() => handleSend()}
                 disabled={!input.trim() || configMissing === true}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-pill hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-[transform,background-color] active:scale-95"
               >
                 <Send className="w-4 h-4" />
                 {t("ai.send")}

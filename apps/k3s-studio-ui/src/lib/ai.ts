@@ -2,8 +2,12 @@ import { api } from "./api";
 
 export interface AiModelConfig {
   id?: number;
+  name?: string | null;
   modelUrl: string;
   modelName: string;
+  active?: boolean;
+  hasApiKey?: boolean;
+  apiKey?: string; // write-only — create/update에만 사용, 응답엔 없음
 }
 
 export interface Conversation {
@@ -64,10 +68,19 @@ export async function cancelManifest(conversationId: number): Promise<void> {
   await api.post(`/ai/cancel/${conversationId}`);
 }
 
+export async function rateTrace(traceId: number, rating: "up" | "down"): Promise<void> {
+  await api.post(`/ai/traces/${traceId}/rating`, { rating });
+}
+
+export async function excludeTrace(traceId: number, excluded: boolean): Promise<void> {
+  await api.post(`/ai/traces/${traceId}/exclude`, { excluded });
+}
+
 export interface ChatStreamCallbacks {
   onText: (text: string) => void;
   onTool: (toolName: string) => void;
   onPreview: (payload: PreviewPayload) => void;
+  onTrace: (traceId: number) => void;
   onDone: (conversationId: number) => void;
   onError: (message: string) => void;
 }
@@ -117,6 +130,8 @@ export async function streamChat(
       } catch {
         callbacks.onError("preview 파싱 오류");
       }
+    } else if (eventType === "trace") {
+      callbacks.onTrace(parseInt(data, 10));
     } else if (eventType === "done") {
       callbacks.onDone(parseInt(data, 10));
     } else if (eventType === "error") {

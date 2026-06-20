@@ -299,7 +299,31 @@ public class ClusterService {
     public String getKubeconfig(String clusterName) throws Exception {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
-        return serviceFor(cluster).getKubeconfig(clusterName);
+        MultipassService svc = serviceFor(cluster);
+        String raw = svc.getKubeconfig(clusterName);
+        return rewriteKubeconfig(raw, clusterName, svc, cluster.getNetworkInterfaceCidr());
+    }
+
+    /**
+     * 다운로드용 kubeconfig 변환: 클러스터 정보를 반영한다.
+     * - server: https://127.0.0.1 → 마스터 IP (생성 시와 동일하게 networkInterfaceCidr 반영)
+     * - default 컨텍스트/클러스터/사용자/current-context 이름 → 클러스터 이름
+     * base64 인증 데이터(certificate-authority-data 등)는 YAML 키 패턴으로 앵커링해 손상시키지 않는다.
+     */
+    private String rewriteKubeconfig(String kubeconfig, String clusterName,
+                                     MultipassService svc, String bridgeCidr) {
+        String result = kubeconfig;
+        try {
+            String masterIp = svc.getMasterIp(clusterName, bridgeCidr);
+            if (masterIp != null && !masterIp.isBlank()) {
+                result = result.replace("127.0.0.1", masterIp);
+            }
+        } catch (Exception e) {
+            log.warn("kubeconfig 마스터 IP 확인 실패, 127.0.0.1 유지: {}", clusterName, e);
+        }
+        return result.replaceAll(
+                "(?m)^(\\s*(?:-\\s+)?(?:name|cluster|user|current-context):\\s*)default\\s*$",
+                "$1" + java.util.regex.Matcher.quoteReplacement(clusterName));
     }
 
     /**

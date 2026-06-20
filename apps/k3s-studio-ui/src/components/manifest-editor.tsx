@@ -115,7 +115,7 @@ export function ManifestEditor({
         <button
           onClick={() => onDelete(value)}
           disabled={!value.trim() || isPending}
-          className="rounded-lg border border-destructive text-destructive px-4 py-1.5 text-sm hover:bg-destructive/10 disabled:opacity-50"
+          className="rounded-pill active:scale-95 transition-transform border border-destructive text-destructive px-4 py-1.5 text-sm hover:bg-destructive/10 disabled:opacity-50"
         >
           {deletePending ? t("common.deleting") : "Delete"}
         </button>

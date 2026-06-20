@@ -82,7 +82,7 @@ export default function DashboardPage() {
             title={t("dashboard.no_servers.title")}
             description={t("dashboard.no_servers.description")}
             action={
-              <Link href="/servers/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              <Link href="/servers/new" className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 transition-transform bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                 <Plus className="h-4 w-4" /> {t("dashboard.no_servers.action")}
               </Link>
             }
@@ -113,7 +113,7 @@ export default function DashboardPage() {
             title={t("dashboard.no_clusters.title")}
             action={
               hasServers ? (
-                <Link href="/clusters/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                <Link href="/clusters/new" className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 transition-transform bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                   <Plus className="h-4 w-4" /> {t("dashboard.no_clusters.action")}
                 </Link>
               ) : undefined

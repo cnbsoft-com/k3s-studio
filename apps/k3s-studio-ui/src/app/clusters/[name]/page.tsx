@@ -388,7 +388,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             <h2 className="font-semibold">{t("node.tab")}</h2>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowAddWorker(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors">
+                className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 border px-3 py-1.5 text-sm hover:bg-muted transition-all">
                 <Plus className="h-4 w-4" /> {t("cluster.add_worker")}
               </button>
             </div>
@@ -630,7 +630,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             <button
               onClick={() => aiDeployMutation.mutate()}
               disabled={aiDeployMutation.isPending}
-              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+              className="w-full rounded-pill active:scale-95 transition-transform bg-primary text-primary-foreground py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
             >
               {aiDeployMutation.isPending ? t("common.applying") : t("ai.deploy_button")}
             </button>
@@ -662,35 +662,35 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
           <button onClick={() => startClusterMutation.mutate()} disabled={isClusterPending}
-            className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
             <Play className="h-4 w-4" /> {t("cluster.actions.start")}
           </button>
           <button onClick={() => stopClusterMutation.mutate()} disabled={isClusterPending}
-            className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
             <Square className="h-4 w-4" /> {t("cluster.actions.stop")}
           </button>
           <button onClick={() => restartClusterMutation.mutate()} disabled={isClusterPending}
-            className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
             <RotateCcw className="h-4 w-4" /> {t("cluster.actions.restart")}
           </button>
           {cluster.serverLocal && (
             <button onClick={() => suspendClusterMutation.mutate()} disabled={isClusterPending}
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
+              className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">
               <PauseCircle className="h-4 w-4" /> {t("cluster.actions.suspend")}
             </button>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowTls(true)}
-            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-muted">
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-4 py-2 text-sm hover:bg-muted">
             <Shield className="h-4 w-4" /> {t("cluster.tls")}
           </button>
           <a href={`/api/clusters/${name}/kubeconfig`} download
-            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-muted">
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-4 py-2 text-sm hover:bg-muted">
             <Download className="h-4 w-4" /> {t("cluster.kubeconfig")}
           </a>
           <button onClick={() => setShowDeleteDialog(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-destructive text-destructive px-4 py-2 text-sm hover:bg-destructive/10">
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border border-destructive text-destructive px-4 py-2 text-sm hover:bg-destructive/10">
             <Trash2 className="h-4 w-4" /> {t("cluster.actions.delete")}
           </button>
         </div>
@@ -725,7 +725,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             <button
               onClick={() => saveTemplateMutation.mutate()}
               disabled={!saveName.trim() || saveTemplateMutation.isPending}
-              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
+              className="w-full rounded-pill active:scale-95 transition-transform bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
             >
               {saveTemplateMutation.isPending ? t("common.saving") : t("common.save")}
             </button>
@@ -757,7 +757,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             <button
               onClick={() => setHardwareMutation.mutate()}
               disabled={(!hwCpus && !hwMemory && !hwDisk) || setHardwareMutation.isPending}
-              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
+              className="w-full rounded-pill active:scale-95 transition-transform bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60"
             >
               {setHardwareMutation.isPending ? t("common.applying") : t("common.apply")}
             </button>
@@ -785,7 +785,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               </select>
             </div>
             <button onClick={() => addWorkerMutation.mutate()} disabled={addWorkerMutation.isPending}
-              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60">
+              className="w-full rounded-pill active:scale-95 transition-transform bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60">
               {t("common.add")}
             </button>
           </div>
@@ -802,7 +802,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
                 className="w-full rounded-md border px-3 py-2 text-sm" placeholder="k3s.example.com" />
             </div>
             <button onClick={() => tlsMutation.mutate()} disabled={tlsMutation.isPending}
-              className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60">
+              className="w-full rounded-pill active:scale-95 transition-transform bg-primary text-primary-foreground py-2 text-sm hover:bg-primary/90 disabled:opacity-60">
               {tlsMutation.isPending ? t("common.applying") : t("common.apply")}
             </button>
           </div>
@@ -821,7 +821,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             <button
               onClick={() => deleteMutation.mutate()}
               disabled={deleteInput !== name || deleteMutation.isPending}
-              className="w-full rounded-lg bg-destructive text-destructive-foreground py-2 text-sm hover:bg-destructive/90 disabled:opacity-40">
+              className="w-full rounded-pill active:scale-95 transition-transform bg-destructive text-destructive-foreground py-2 text-sm hover:bg-destructive/90 disabled:opacity-40">
               {t("common.delete")}
             </button>
           </div>

@@ -28,6 +28,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -39,6 +43,7 @@ public class AiService {
     private final AiModelConfigRepository configRepository;
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final AgentTraceRepository agentTraceRepository;
     private final ServerRepository serverRepository;
     private final ClusterRepository clusterRepository;
     private final ClusterService clusterService;
@@ -48,13 +53,33 @@ public class AiService {
     // conversationId → 승인 대기 중인 매니페스트 작업
     private final ConcurrentHashMap<Long, PendingOperation> pendingOps = new ConcurrentHashMap<>();
 
+    // SSE keepalive: 모델이 첫 토큰까지 침묵하는 동안 프록시(Next.js rewrite/undici) idle 타임아웃으로
+    // 끊겨 클라이언트가 HTTP 500을 받는 문제를 막기 위해 주기적으로 코멘트를 흘려보낸다.
+    private final ScheduledExecutorService heartbeatScheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "ai-sse-heartbeat");
+                t.setDaemon(true);
+                return t;
+            });
+
     public record PendingOperation(String action, String yaml, String clusterName, Map<String, Object> extra) {}
 
     @Async("aiTaskExecutor")
     public CompletableFuture<Void> streamChat(Long conversationId, String userMessage, String apiKey, SseEmitter emitter) {
+        ScheduledFuture<?> heartbeat = null;
         try {
-            AiModelConfig config = configRepository.findAll().stream().findFirst()
-                    .orElseThrow(() -> new IllegalStateException("AI 모델 설정이 없습니다. /settings/ai 에서 설정해주세요."));
+            // 즉시 헤더 flush + 15초마다 keepalive 코멘트 → 모델이 침묵하는 동안에도 바이트가 흘러
+            // 프록시 idle 타임아웃(HTTP 500)을 방지. 코멘트는 ai.ts 파서가 무시한다.
+            emitter.send(SseEmitter.event().comment("open"));
+            heartbeat = heartbeatScheduler.scheduleAtFixedRate(() -> {
+                try {
+                    emitter.send(SseEmitter.event().comment("hb"));
+                } catch (Exception ignored) {
+                    // 클라이언트 연결 종료/emitter 완료 — finally에서 취소됨
+                }
+            }, 15, 15, TimeUnit.SECONDS);
+
+            AiModelConfig config = activeConfig();
 
             Conversation conversation = conversationId != null
                     ? conversationRepository.findById(conversationId).orElseGet(() -> conversationRepository.save(new Conversation()))
@@ -72,14 +97,18 @@ public class AiService {
             messageRepository.save(userMsg);
 
             List<Map<String, Object>> messages = buildMessages(conversation.getId(), userMessage);
-            RestClient client = buildRestClient(config.getModelUrl(), apiKey);
+            String effectiveKey = (apiKey != null && !apiKey.isBlank()) ? apiKey : config.getApiKey();
+            RestClient client = buildRestClient(config.getModelUrl(), effectiveKey);
             List<Map<String, Object>> tools = buildToolDefinitions();
 
             StringBuilder fullResponse = new StringBuilder();
             int round = 0;
+            String lastFinishReason = "stop";
+            boolean anyToolError = false;
 
             while (round++ < MAX_TOOL_ROUNDS) {
                 StreamResult result = streamModel(client, config.getModelName(), messages, tools, emitter);
+                lastFinishReason = result.finishReason();
                 String textContent = result.textContent();
                 List<Map<String, Object>> toolCalls = result.toolCalls();
 
@@ -149,6 +178,7 @@ public class AiService {
                         } catch (Exception e) {
                             toolResult = "오류: " + e.getMessage();
                         }
+                        if (toolResult.startsWith("오류:")) anyToolError = true;
                         messages.add(Map.of("role", "tool", "tool_call_id", toolCallId, "content", toolResult));
                     }
 
@@ -216,6 +246,7 @@ public class AiService {
                             } catch (Exception e) {
                                 toolResult = "오류: " + e.getMessage();
                             }
+                            if (toolResult.startsWith("오류:")) anyToolError = true;
                             messages.add(Map.of("role", "assistant", "content", textContent));
                             messages.add(Map.of("role", "user", "content", "도구 실행 결과:\n" + toolResult));
                             continue;
@@ -245,6 +276,13 @@ public class AiService {
                 messageRepository.save(assistantReply);
             }
 
+            // === 학습 데이터 수집 (Phase 0, PLAN-AI-FINETUNE.md) ===
+            Long traceId = saveTrace(conversation.getId(), userMessage, messages, fullResponse,
+                    config.getModelName(), tools, lastFinishReason, round, anyToolError);
+            if (traceId != null) {
+                emitter.send(SseEmitter.event().name("trace").data(traceId.toString()));
+            }
+
             emitter.send(SseEmitter.event().name("done").data(conversation.getId().toString()));
             emitter.complete();
         } catch (Exception e) {
@@ -253,6 +291,8 @@ public class AiService {
                 emitter.send(SseEmitter.event().name("error").data(friendlyAiError(e)));
                 emitter.complete();
             } catch (IOException ignored) {}
+        } finally {
+            if (heartbeat != null) heartbeat.cancel(true);
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -261,7 +301,7 @@ public class AiService {
         PendingOperation op = pendingOps.remove(conversationId);
         if (op == null) throw new IllegalStateException("대기 중인 작업이 없습니다.");
 
-        return switch (op.action()) {
+        String confirmResult = switch (op.action()) {
             case "apply_manifest" -> {
                 k8sService.applyManifest(op.clusterName(), op.yaml());
                 saveManifestMessage(conversationId, op.action(), op.yaml(), "매니페스트 적용 완료");
@@ -342,10 +382,63 @@ public class AiService {
             }
             default -> throw new IllegalStateException("알 수 없는 액션: " + op.action());
         };
+        markTraceOutcome(conversationId, true);
+        return confirmResult;
     }
 
     public void cancelPending(Long conversationId) {
-        pendingOps.remove(conversationId);
+        PendingOperation op = pendingOps.remove(conversationId);
+        if (op != null) markTraceOutcome(conversationId, false);
+    }
+
+    /**
+     * 직전 미리보기 턴의 trace에 사용자 결정(승인/취소)을 기록한다.
+     * confirm/cancel은 미리보기 직후 이어지므로 최신 trace가 그 대상.
+     */
+    private void markTraceOutcome(Long conversationId, boolean confirmed) {
+        try {
+            agentTraceRepository.findFirstByConversationIdOrderByCreatedAtDesc(conversationId)
+                    .ifPresent(trace -> {
+                        if (confirmed) trace.setConfirmed(true);
+                        else trace.setCancelled(true);
+                        agentTraceRepository.save(trace);
+                    });
+        } catch (Exception e) {
+            log.warn("AgentTrace outcome 갱신 실패: conversationId={}", conversationId, e);
+        }
+    }
+
+    /**
+     * 어시스턴트 턴의 학습용 trace 저장. 수집 실패가 채팅 흐름을 깨지 않도록 예외를 삼킨다.
+     * 최종 텍스트 답변은 messages에 없으므로 별도로 덧붙인다.
+     */
+    private Long saveTrace(Long conversationId, String userMessage,
+                           List<Map<String, Object>> messages, StringBuilder fullResponse,
+                           String modelName, List<Map<String, Object>> tools,
+                           String finishReason, int roundCount, boolean toolError) {
+        try {
+            List<Map<String, Object>> traceMessages = new ArrayList<>(messages);
+            if (!fullResponse.isEmpty()) {
+                traceMessages.add(Map.of("role", "assistant", "content", fullResponse.toString()));
+            }
+            AgentTrace trace = new AgentTrace();
+            trace.setConversationId(conversationId);
+            trace.setTurnIndex(agentTraceRepository.countByConversationId(conversationId));
+            trace.setModelName(modelName);
+            trace.setToolSchemaHash(Integer.toHexString(objectMapper.writeValueAsString(tools).hashCode()));
+            trace.setUserMessage(userMessage);
+            trace.setMessagesJson(objectMapper.writeValueAsString(traceMessages));
+            trace.setEnvSnapshotJson(objectMapper.writeValueAsString(Map.of(
+                    "serverCount", serverRepository.count(),
+                    "clusterCount", clusterRepository.count())));
+            trace.setFinishReason(finishReason);
+            trace.setRoundCount(roundCount);
+            trace.setToolError(toolError);
+            return agentTraceRepository.save(trace).getId();
+        } catch (Exception e) {
+            log.warn("AgentTrace 저장 실패 (학습 수집): conversationId={}", conversationId, e);
+            return null;
+        }
     }
 
     private void saveManifestMessage(Long conversationId, String action, String yaml, String result) {
@@ -402,6 +495,13 @@ public class AiService {
     }
 
     private record StreamResult(String textContent, List<Map<String, Object>> toolCalls, String finishReason) {}
+
+    /** 활성 프로파일. 없으면 레거시 단일 행으로 폴백. */
+    private AiModelConfig activeConfig() {
+        return configRepository.findFirstByActiveTrueOrderByIdAsc()
+                .or(() -> configRepository.findAllByOrderByIdAsc().stream().findFirst())
+                .orElseThrow(() -> new IllegalStateException("AI 모델 설정이 없습니다. /settings/ai 에서 설정해주세요."));
+    }
 
     private RestClient buildRestClient(String modelUrl, String apiKey) {
         // 스트리밍 응답이므로 per-read SO_TIMEOUT을 적용하는 SimpleClientHttpRequestFactory 사용.

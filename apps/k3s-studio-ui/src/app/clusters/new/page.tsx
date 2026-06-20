@@ -403,17 +403,17 @@ function NewClusterForm() {
         {/* Navigation */}
         <div className="flex justify-between pt-6">
           <button type="button" onClick={() => setStep((s) => s - 1)} disabled={step === 0}
-            className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm disabled:opacity-40 hover:bg-muted transition-colors">
+            className="inline-flex items-center gap-1 rounded-pill active:scale-95 border px-4 py-2 text-sm disabled:opacity-40 hover:bg-muted transition-all">
             <ChevronLeft className="h-4 w-4" /> {t("common.previous")}
           </button>
           {step < STEPS.length - 1 ? (
             <button type="button" onClick={handleNext}
-              className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm hover:bg-primary/90 transition-colors">
+              className="inline-flex items-center gap-1 rounded-pill active:scale-95 bg-primary text-primary-foreground px-4 py-2 text-sm hover:bg-primary/90 transition-all">
               {t("common.next")} <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
             <button type="submit" disabled={mutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-6 py-2 text-sm hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              className="inline-flex items-center gap-2 rounded-pill active:scale-95 bg-primary text-primary-foreground px-6 py-2 text-sm hover:bg-primary/90 disabled:opacity-60 transition-all">
               {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {mutation.isPending ? t("common.creating") : t("cluster.create")}
             </button>
