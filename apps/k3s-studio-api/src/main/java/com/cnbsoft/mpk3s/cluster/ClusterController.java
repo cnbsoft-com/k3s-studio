@@ -85,6 +85,23 @@ public class ClusterController {
                 .body(content.getBytes());
     }
 
+    // 모델 우회 직접 helm 운영 (AI 에이전트 없이 UI/API에서 호출)
+    @PostMapping("/{name}/helm/install")
+    public ResponseEntity<Map<String, String>> helmInstall(@PathVariable String name, @RequestBody Map<String, String> body) throws Exception {
+        String out = clusterService.helmInstall(name,
+                body.get("releaseName"), body.get("chart"),
+                body.getOrDefault("namespace", "default"),
+                body.get("repoName"), body.get("repoUrl"), body.get("values"));
+        return ResponseEntity.ok(Map.of("message", out));
+    }
+
+    @PostMapping("/{name}/helm/uninstall")
+    public ResponseEntity<Map<String, String>> helmUninstall(@PathVariable String name, @RequestBody Map<String, String> body) throws Exception {
+        String out = clusterService.helmUninstall(name, body.get("releaseName"),
+                body.getOrDefault("namespace", "default"));
+        return ResponseEntity.ok(Map.of("message", out));
+    }
+
     @PostMapping("/{name}/nodes/{nodeName}/start")
     public ResponseEntity<Void> startNode(@PathVariable String name, @PathVariable String nodeName) throws Exception {
         clusterService.startNode(name, nodeName);
