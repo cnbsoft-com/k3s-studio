@@ -204,6 +204,51 @@ public class MultipassService {
         Files.writeString(kubeconfigPath, content);
     }
 
+    /**
+     * 마스터 노드에서 helm 차트를 설치한다. helm이 없으면 먼저 설치.
+     * k3s kubeconfig(/etc/rancher/k3s/k3s.yaml)를 사용하며 root 권한(sudo)으로 실행.
+     */
+    public String helmInstall(String clusterName, String releaseName, String chart, String namespace,
+                              @Nullable String repoName, @Nullable String repoUrl, @Nullable String values)
+            throws IOException, InterruptedException {
+        String rel = requireToken("releaseName", releaseName);
+        String ns = requireToken("namespace", (namespace == null || namespace.isBlank()) ? "default" : namespace);
+        if (chart == null || chart.isBlank()) throw new IllegalArgumentException("chart는 필수입니다.");
+
+        StringBuilder sh = new StringBuilder();
+        sh.append("set -e; ");
+        sh.append("if ! command -v helm >/dev/null 2>&1; then ")
+          .append("curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash; fi; ");
+        if (repoName != null && !repoName.isBlank() && repoUrl != null && !repoUrl.isBlank()) {
+            sh.append("sudo helm repo add ").append(requireToken("repoName", repoName)).append(" ")
+              .append(shq(repoUrl)).append(" >/dev/null 2>&1 || true; ");
+            sh.append("sudo helm repo update >/dev/null 2>&1; ");
+        }
+        sh.append("sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm upgrade --install ")
+          .append(rel).append(" ").append(shq(chart))
+          .append(" --namespace ").append(ns).append(" --create-namespace");
+        if (values != null && !values.isBlank()) {
+            for (String kv : values.split(",")) {
+                String t = kv.trim();
+                if (!t.isEmpty()) sh.append(" --set ").append(shq(t));
+            }
+        }
+        return executor.execMultipass("exec", clusterName + "-master", "--", "bash", "-lc", sh.toString());
+    }
+
+    /** 셸 인자 단일따옴표 이스케이프 */
+    private String shq(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    /** 식별자형 값 검증 (셸 인젝션 방지) */
+    private String requireToken(String field, String value) {
+        if (value == null || !value.matches("[A-Za-z0-9._/-]+")) {
+            throw new IllegalArgumentException(field + " 값이 올바르지 않습니다: " + value);
+        }
+        return value;
+    }
+
     public void deleteNode(String nodeName, Consumer<String> logConsumer)
             throws IOException, InterruptedException {
         executor.execMultipassStreaming(logConsumer, "delete", nodeName);

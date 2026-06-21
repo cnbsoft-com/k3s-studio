@@ -25,19 +25,37 @@ export interface Message {
 }
 
 export interface PreviewPayload {
-  action: "apply_manifest" | "delete_manifest" | "scale_deployment" | "restart_deployment" | "start_cluster" | "stop_cluster" | "create_cluster" | "delete_cluster";
+  action: "apply_manifest" | "delete_manifest" | "scale_deployment" | "restart_deployment" | "start_cluster" | "stop_cluster" | "create_cluster" | "delete_cluster" | "helm_install";
   yaml: string;
   clusterName: string;
 }
 
 export async function getAiConfig(): Promise<AiModelConfig | null> {
-  const res = await api.get<AiModelConfig>("/ai/config");
+  const res = await api.get<AiModelConfig>("/ai/config"); // 활성 프로파일
   return res.status === 204 ? null : res.data;
 }
 
-export async function saveAiConfig(config: AiModelConfig): Promise<AiModelConfig> {
-  const res = await api.put<AiModelConfig>("/ai/config", config);
+export async function listAiConfigs(): Promise<AiModelConfig[]> {
+  const res = await api.get<AiModelConfig[]>("/ai/configs");
   return res.data;
+}
+
+export async function createAiConfig(data: AiModelConfig): Promise<AiModelConfig> {
+  const res = await api.post<AiModelConfig>("/ai/configs", data);
+  return res.data;
+}
+
+export async function updateAiConfig(id: number, data: AiModelConfig): Promise<AiModelConfig> {
+  const res = await api.put<AiModelConfig>(`/ai/configs/${id}`, data);
+  return res.data;
+}
+
+export async function deleteAiConfig(id: number): Promise<void> {
+  await api.delete(`/ai/configs/${id}`);
+}
+
+export async function activateAiConfig(id: number): Promise<void> {
+  await api.post(`/ai/configs/${id}/activate`);
 }
 
 export async function listConversations(): Promise<Conversation[]> {

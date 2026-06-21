@@ -5,7 +5,7 @@
 ![Language](https://img.shields.io/badge/language-Java%20%2F%20TypeScript-blue)
 
 Multipass 기반 K3s 클러스터를 자연어와 Web UI로 통합 관리하는 플랫폼입니다.
-
+명령어 기반을 선호하시는 분들은 [mpk3s-cli](README-CLI.MD) 문서를 참고하세요.
 ---
 
 ## Features
