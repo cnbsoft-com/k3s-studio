@@ -9,12 +9,41 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          "system-ui",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Inter",
+          "sans-serif",
+        ],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "18px", // Apple utility/accessory cards
+        pill: "9999px", // signature Apple pill — primary CTAs, search, chips
+      },
+      boxShadow: {
+        // The ONLY shadow in the system — for product imagery resting on a surface
+        product: "3px 5px 30px 0 rgba(0, 0, 0, 0.22)",
+      },
+      letterSpacing: {
+        "apple-tight": "-0.011em", // body
+        "apple-tighter": "-0.022em", // display headlines
       },
       colors: {
+        // Apple design tokens (DESIGN.MD) — use alongside the semantic tokens below
+        ink: "#1d1d1f",
+        parchment: "#f5f5f7",
+        pearl: "#fafafc",
+        hairline: "#e0e0e0",
+        "action-blue": "#0066cc",
+        "sky-link": "#2997ff", // in-copy links on dark tiles
+        "tile-1": "#272729",
+        "tile-2": "#2a2a2c",
+        "tile-3": "#252527",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {

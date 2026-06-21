@@ -36,4 +36,8 @@ public class ClusterRequest {
 
     // K3s 컴포넌트 옵션 (true = 활성화)
     private Map<String, Boolean> options;
+
+    // 브리지 네트워크 (선택 사항) — null이면 기존 DHCP 동작
+    private String networkInterface;
+    private String networkInterfaceCidr;
 }

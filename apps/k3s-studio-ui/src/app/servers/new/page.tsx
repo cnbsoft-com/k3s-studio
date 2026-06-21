@@ -22,8 +22,8 @@ interface FormState {
 }
 
 const inputCls = "w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background";
-const btnPrimary = "inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors";
-const btnGhost = "inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm disabled:opacity-40 hover:bg-muted transition-colors";
+const btnPrimary = "inline-flex items-center gap-1.5 rounded-pill active:scale-95 bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-all";
+const btnGhost = "inline-flex items-center gap-1 rounded-pill active:scale-95 border px-4 py-2 text-sm disabled:opacity-40 hover:bg-muted transition-all";
 
 export default function NewServerPage() {
   const router = useRouter();

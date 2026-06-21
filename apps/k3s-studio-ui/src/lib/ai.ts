@@ -2,8 +2,12 @@ import { api } from "./api";
 
 export interface AiModelConfig {
   id?: number;
+  name?: string | null;
   modelUrl: string;
   modelName: string;
+  active?: boolean;
+  hasApiKey?: boolean;
+  apiKey?: string; // write-only — create/update에만 사용, 응답엔 없음
 }
 
 export interface Conversation {
@@ -21,7 +25,7 @@ export interface Message {
 }
 
 export interface PreviewPayload {
-  action: "apply_manifest" | "delete_manifest";
+  action: "apply_manifest" | "delete_manifest" | "scale_deployment" | "restart_deployment" | "start_cluster" | "stop_cluster" | "create_cluster" | "delete_cluster";
   yaml: string;
   clusterName: string;
 }
@@ -64,10 +68,19 @@ export async function cancelManifest(conversationId: number): Promise<void> {
   await api.post(`/ai/cancel/${conversationId}`);
 }
 
+export async function rateTrace(traceId: number, rating: "up" | "down"): Promise<void> {
+  await api.post(`/ai/traces/${traceId}/rating`, { rating });
+}
+
+export async function excludeTrace(traceId: number, excluded: boolean): Promise<void> {
+  await api.post(`/ai/traces/${traceId}/exclude`, { excluded });
+}
+
 export interface ChatStreamCallbacks {
   onText: (text: string) => void;
   onTool: (toolName: string) => void;
   onPreview: (payload: PreviewPayload) => void;
+  onTrace: (traceId: number) => void;
   onDone: (conversationId: number) => void;
   onError: (message: string) => void;
 }
@@ -76,7 +89,8 @@ export async function streamChat(
   message: string,
   apiKey: string | null,
   conversationId: number | null,
-  callbacks: ChatStreamCallbacks
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal
 ): Promise<void> {
   const url = new URL("/api/ai/chat", window.location.origin);
   if (conversationId) url.searchParams.set("conversationId", String(conversationId));
@@ -84,11 +98,19 @@ export async function streamChat(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) headers["X-AI-Api-Key"] = apiKey;
 
-  const res = await fetch(url.toString(), {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ message }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message }),
+      signal,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") return;
+    callbacks.onError(`네트워크 오류`);
+    return;
+  }
 
   if (!res.ok || !res.body) {
     callbacks.onError(`HTTP ${res.status}`);
@@ -108,6 +130,8 @@ export async function streamChat(
       } catch {
         callbacks.onError("preview 파싱 오류");
       }
+    } else if (eventType === "trace") {
+      callbacks.onTrace(parseInt(data, 10));
     } else if (eventType === "done") {
       callbacks.onDone(parseInt(data, 10));
     } else if (eventType === "error") {
@@ -117,29 +141,34 @@ export async function streamChat(
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    const events = buffer.split(/\n\n/);
-    buffer = events.pop() ?? "";
+      const events = buffer.split(/\n\n/);
+      buffer = events.pop() ?? "";
 
-    for (const event of events) {
-      let eventType = "message";
-      let dataLines: string[] = [];
+      for (const event of events) {
+        let eventType = "message";
+        let dataLines: string[] = [];
 
-      for (const line of event.split("\n")) {
-        if (line.startsWith("event:")) {
-          eventType = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trim());
+        for (const line of event.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+
+        if (dataLines.length > 0) {
+          dispatchEvent(eventType, dataLines.join("\n"));
         }
       }
-
-      if (dataLines.length > 0) {
-        dispatchEvent(eventType, dataLines.join("\n"));
-      }
     }
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") return;
+    throw e;
   }
 }

@@ -24,10 +24,11 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           <div className="min-h-screen flex flex-col bg-background">
-            <header className="border-b">
-              <div className="px-4 py-3 flex items-center gap-4">
-                <span className="font-bold text-lg">K3s-Studio</span>
-                <div className="ml-auto flex items-center gap-2">
+            {/* Apple global-nav: slim true-black bar pinned to the top */}
+            <header className="bg-black text-white">
+              <div className="h-11 px-4 flex items-center gap-4">
+                <span className="text-sm font-semibold tracking-apple-tight">K3s-Studio</span>
+                <div className="ml-auto flex items-center gap-1">
                   <LangToggle />
                   <ThemeToggle />
                 </div>

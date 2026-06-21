@@ -7,9 +7,11 @@ import com.cnbsoft.mpk3s.job.JobType;
 import com.cnbsoft.mpk3s.multipass.MultipassExecutorFactory;
 import com.cnbsoft.mpk3s.multipass.MultipassNode;
 import com.cnbsoft.mpk3s.multipass.MultipassService;
+import com.cnbsoft.mpk3s.multipass.NetworkInterfaceInfo;
 import com.cnbsoft.mpk3s.server.ServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,8 @@ public class ClusterService {
     private final MultipassService multipassService;
     private final MultipassExecutorFactory executorFactory;
     private final ServerRepository serverRepository;
+    /** 같은 빈 내 @Async 메서드를 프록시 경유로 호출하기 위한 self 참조 (self-invocation 시 @Async 우회 방지) */
+    private final ObjectProvider<ClusterService> self;
 
     @Value("${multipass.kubeconfig-dir:${user.home}/.kube}")
     private String kubeconfigDir;
@@ -76,6 +80,15 @@ public class ClusterService {
         return serviceFor(cluster).listClusterNodes(name);
     }
 
+    public List<NetworkInterfaceInfo> getServerNetworks(Long serverId) {
+        try {
+            return serviceForServerId(serverId).getNetworkInterfaces();
+        } catch (Exception e) {
+            log.warn("네트워크 인터페이스 조회 실패 (serverId={}): {}", serverId, e.getMessage());
+            return List.of();
+        }
+    }
+
     @Transactional
     public UUID createCluster(ClusterRequest req) {
         if (clusterRepository.existsByName(req.getName())) {
@@ -93,10 +106,12 @@ public class ClusterService {
         cluster.setWorkerCount(req.getWorkerCount());
         cluster.setUbuntuImage(req.getUbuntuImage());
         cluster.setOptions(req.getOptions());
+        cluster.setNetworkInterface(req.getNetworkInterface());
+        cluster.setNetworkInterfaceCidr(req.getNetworkInterfaceCidr());
         clusterRepository.save(cluster);
 
         Job job = jobService.createJob(req.getName(), JobType.CREATE_CLUSTER);
-        doCreateCluster(job.getId(), req);
+        self.getObject().doCreateCluster(job.getId(), req);
         return job.getId();
     }
 
@@ -110,11 +125,25 @@ public class ClusterService {
 
             jobService.appendLog(jobId, "마스터 노드 생성 중: " + req.getName() + "-master");
             svc.launchMaster(req.getName(), masterSpec[0], masterSpec[1], masterSpec[2],
-                    req.getUbuntuImage(), req.getOptions(),
+                    req.getUbuntuImage(), req.getOptions(), req.getNetworkInterface(),
                     line -> jobService.appendLog(jobId, line));
 
-            String masterIp = svc.getMasterIp(req.getName());
-            jobService.appendLog(jobId, "마스터 IP: " + masterIp);
+            String masterIp;
+            if (req.getNetworkInterface() != null) {
+                // 브리지 모드: CIDR 매칭으로 LAN IP 확정
+                String bridgeCidr = req.getNetworkInterfaceCidr();
+                masterIp = svc.getMasterIp(req.getName(), bridgeCidr);
+                if ("127.0.0.1".equals(masterIp)) {
+                    jobService.appendLog(jobId, "[WARN] 브리지 IP를 확정하지 못해 localhost로 kubeconfig가 저장됩니다.");
+                }
+                jobService.appendLog(jobId, "마스터 IP (브리지): " + masterIp);
+                svc.applyTlsSan(req.getName(), null, masterIp, line -> jobService.appendLog(jobId, line));
+                svc.waitForK3sReady(req.getName() + "-master");
+            } else {
+                // 비브리지 모드: 기존 동작 그대로
+                masterIp = svc.getMasterIp(req.getName());
+                jobService.appendLog(jobId, "마스터 IP: " + masterIp);
+            }
 
             String nodeToken = svc.getNodeToken(req.getName());
 
@@ -125,12 +154,12 @@ public class ClusterService {
                 jobService.appendLog(jobId, "워커 노드 생성 중: " + req.getName() + "-worker" + i);
                 svc.launchWorker(req.getName(), i,
                         workerSpec[0], workerSpec[1], workerSpec[2],
-                        req.getUbuntuImage(), masterIp, nodeToken,
+                        req.getUbuntuImage(), masterIp, nodeToken, req.getNetworkInterface(),
                         line -> jobService.appendLog(jobId, line));
             }
 
             String kubeconfig = svc.getKubeconfig(req.getName());
-            svc.saveKubeconfig(req.getName(), kubeconfig);
+            svc.saveKubeconfig(req.getName(), kubeconfig, req.getNetworkInterfaceCidr());
             jobService.appendLog(jobId, "kubeconfig 저장 완료");
 
             updateClusterStatus(req.getName(), ClusterStatus.RUNNING);
@@ -151,7 +180,7 @@ public class ClusterService {
         clusterRepository.save(cluster);
 
         Job job = jobService.createJob(name, JobType.DELETE_CLUSTER);
-        doDeleteCluster(job.getId(), name, cluster.getServerId());
+        self.getObject().doDeleteCluster(job.getId(), name, cluster.getServerId());
         return job.getId();
     }
 
@@ -180,18 +209,20 @@ public class ClusterService {
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
 
         Job job = jobService.createJob(clusterName, JobType.ADD_WORKER);
-        doAddWorkers(job.getId(), clusterName, cluster.getWorkerCount(),
-                cluster.getUbuntuImage(), req, cluster.getServerId());
+        self.getObject().doAddWorkers(job.getId(), clusterName, cluster.getWorkerCount(),
+                cluster.getUbuntuImage(), req, cluster.getServerId(),
+                cluster.getNetworkInterface(), cluster.getNetworkInterfaceCidr());
         return job.getId();
     }
 
     @Async("clusterTaskExecutor")
     public void doAddWorkers(UUID jobId, String clusterName, int currentWorkerCount,
-                              String image, WorkerRequest req, Long serverId) {
+                              String image, WorkerRequest req, Long serverId,
+                              String networkInterface, String networkInterfaceCidr) {
         jobService.start(jobId);
         MultipassService svc = serviceForServerId(serverId);
         try {
-            String masterIp = svc.getMasterIp(clusterName);
+            String masterIp = svc.getMasterIp(clusterName, networkInterfaceCidr);
             String nodeToken = svc.getNodeToken(clusterName);
             String[] spec = resolveSpec(req.getWorkerSpec(), req.getWorkerCpus(),
                     req.getWorkerMemory(), req.getWorkerDisk());
@@ -200,7 +231,7 @@ public class ClusterService {
                 int idx = currentWorkerCount + i;
                 jobService.appendLog(jobId, "워커 노드 생성 중: " + clusterName + "-worker" + idx);
                 svc.launchWorker(clusterName, idx,
-                        spec[0], spec[1], spec[2], image, masterIp, nodeToken,
+                        spec[0], spec[1], spec[2], image, masterIp, nodeToken, networkInterface,
                         line -> jobService.appendLog(jobId, line));
             }
 
@@ -220,7 +251,7 @@ public class ClusterService {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
         Job job = jobService.createJob(clusterName, JobType.DELETE_WORKER);
-        doDeleteWorker(job.getId(), clusterName, workerName, cluster.getServerId());
+        self.getObject().doDeleteWorker(job.getId(), clusterName, workerName, cluster.getServerId());
         return job.getId();
     }
 
@@ -248,7 +279,7 @@ public class ClusterService {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
         Job job = jobService.createJob(clusterName, JobType.ADD_TLS);
-        doAddTls(job.getId(), clusterName, req.getDomain(), cluster.getServerId());
+        self.getObject().doAddTls(job.getId(), clusterName, req.getDomain(), cluster.getServerId());
         return job.getId();
     }
 
@@ -257,7 +288,7 @@ public class ClusterService {
         jobService.start(jobId);
         MultipassService svc = serviceForServerId(serverId);
         try {
-            svc.applyTlsSan(clusterName, domain, line -> jobService.appendLog(jobId, line));
+            svc.applyTlsSan(clusterName, domain, null, line -> jobService.appendLog(jobId, line));
             jobService.complete(jobId);
         } catch (Exception e) {
             log.error("Add TLS failed: {}", clusterName, e);
@@ -268,7 +299,31 @@ public class ClusterService {
     public String getKubeconfig(String clusterName) throws Exception {
         Cluster cluster = clusterRepository.findByName(clusterName)
                 .orElseThrow(() -> new ClusterNotFoundException(clusterName));
-        return serviceFor(cluster).getKubeconfig(clusterName);
+        MultipassService svc = serviceFor(cluster);
+        String raw = svc.getKubeconfig(clusterName);
+        return rewriteKubeconfig(raw, clusterName, svc, cluster.getNetworkInterfaceCidr());
+    }
+
+    /**
+     * 다운로드용 kubeconfig 변환: 클러스터 정보를 반영한다.
+     * - server: https://127.0.0.1 → 마스터 IP (생성 시와 동일하게 networkInterfaceCidr 반영)
+     * - default 컨텍스트/클러스터/사용자/current-context 이름 → 클러스터 이름
+     * base64 인증 데이터(certificate-authority-data 등)는 YAML 키 패턴으로 앵커링해 손상시키지 않는다.
+     */
+    private String rewriteKubeconfig(String kubeconfig, String clusterName,
+                                     MultipassService svc, String bridgeCidr) {
+        String result = kubeconfig;
+        try {
+            String masterIp = svc.getMasterIp(clusterName, bridgeCidr);
+            if (masterIp != null && !masterIp.isBlank()) {
+                result = result.replace("127.0.0.1", masterIp);
+            }
+        } catch (Exception e) {
+            log.warn("kubeconfig 마스터 IP 확인 실패, 127.0.0.1 유지: {}", clusterName, e);
+        }
+        return result.replaceAll(
+                "(?m)^(\\s*(?:-\\s+)?(?:name|cluster|user|current-context):\\s*)default\\s*$",
+                "$1" + java.util.regex.Matcher.quoteReplacement(clusterName));
     }
 
     /**
@@ -343,6 +398,28 @@ public class ClusterService {
             c.setStatus(status);
             clusterRepository.save(c);
         });
+    }
+
+    // ── Cluster-level async control (AI 도구용) ─────────────────────────────────
+
+    @Async("clusterTaskExecutor")
+    public void startClusterAsync(String clusterName) {
+        try {
+            List<MultipassNode> nodes = getNodes(clusterName);
+            for (MultipassNode node : nodes) startNode(clusterName, node.getName());
+        } catch (Exception e) {
+            log.warn("startClusterAsync 오류 — cluster={}: {}", clusterName, e.getMessage());
+        }
+    }
+
+    @Async("clusterTaskExecutor")
+    public void stopClusterAsync(String clusterName) {
+        try {
+            List<MultipassNode> nodes = getNodes(clusterName);
+            for (MultipassNode node : nodes) stopNode(clusterName, node.getName());
+        } catch (Exception e) {
+            log.warn("stopClusterAsync 오류 — cluster={}: {}", clusterName, e.getMessage());
+        }
     }
 
     // ── Instance control (synchronous) ────────────────────────────────────────

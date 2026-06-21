@@ -101,6 +101,14 @@ export interface CreateClusterRequest {
   workerDisk?: string;
   ubuntuImage: string;
   options: Record<string, boolean>;
+  networkInterface?: string;
+  networkInterfaceCidr?: string;
+}
+
+export interface NetworkInterfaceInfo {
+  name: string;
+  type: string;
+  cidr: string | null;
 }
 
 // Servers
@@ -130,6 +138,11 @@ export const installMultipass = (id: number) =>
 
 export const discoverClusters = (id: number) =>
   api.get<DiscoveredCluster[]>(`/servers/${id}/discover-clusters`).then((r) => r.data);
+
+export const getServerNetworks = (serverId: number | null): Promise<NetworkInterfaceInfo[]> => {
+  const path = serverId != null ? `/servers/${serverId}/networks` : `/servers/local/networks`;
+  return api.get<NetworkInterfaceInfo[]>(path).then((r) => r.data).catch(() => []);
+};
 
 export const importClusters = (serverId: number, clusters: DiscoveredCluster[]) =>
   api.post<ClusterResponse[]>("/clusters/import", { serverId, clusters }).then((r) => r.data);

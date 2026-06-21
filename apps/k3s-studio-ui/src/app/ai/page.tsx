@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Plus, Bot, Settings, Loader2, Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
+import { Send, Square, Plus, Bot, Settings, Loader2, Trash2, Pencil, Check, X, AlertTriangle, Copy, Menu, Download, ThumbsUp, ThumbsDown, Ban } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,8 @@ import {
   updateConversationTitle,
   confirmManifest,
   cancelManifest,
+  rateTrace,
+  excludeTrace,
   type Conversation,
   type PreviewPayload,
 } from "@/lib/ai";
@@ -23,6 +25,7 @@ import {
 interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
+  traceId?: number;
 }
 
 type PreviewStatus = "pending" | "loading" | "done" | "error" | "cancelled";
@@ -38,6 +41,10 @@ export default function AiPage() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // traceId → 학습 라벨 (👍/👎/제외). 스트리밍 직후 메시지에만 표시
+  const [feedback, setFeedback] = useState<Record<number, { rating?: "up" | "down"; excluded?: boolean }>>({});
 
   const [pendingPreview, setPendingPreview] = useState<PreviewPayload | null>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
@@ -45,6 +52,8 @@ export default function AiPage() {
   const [previewReady, setPreviewReady] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const prevConversationIdRef = useRef<number | null>(null);
 
   const apiKey =
     typeof window !== "undefined" ? sessionStorage.getItem("ai_api_key") : null;
@@ -64,9 +73,12 @@ export default function AiPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeTool, pendingPreview]);
 
-  // 대화 전환 시 pending preview 자동 취소
+  // 대화 전환 시 pending preview 자동 취소 (null→새ID는 첫 메시지 완료이므로 제외)
   useEffect(() => {
-    if (pendingPreview && previewStatus === "pending" && activeConversationId !== null) {
+    const prevId = prevConversationIdRef.current;
+    prevConversationIdRef.current = activeConversationId;
+    if (pendingPreview && previewStatus === "pending" &&
+        prevId !== null && activeConversationId !== null && prevId !== activeConversationId) {
       cancelManifest(activeConversationId).catch(() => {});
       setPendingPreview(null);
       setPreviewStatus(null);
@@ -76,6 +88,7 @@ export default function AiPage() {
   }, [activeConversationId]);
 
   const loadConversation = useCallback(async (id: number) => {
+    abortRef.current?.abort();
     setActiveConversationId(id);
     const history = await getMessages(id);
     setMessages(history.map((m) => ({ role: m.role, content: m.content })));
@@ -110,6 +123,22 @@ export default function AiPage() {
     setPreviewReady(false);
   };
 
+  const handleSaveConversation = async (c: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const msgs = await getMessages(c.id);
+    const lines = msgs.map((m) =>
+      `[${m.role.toUpperCase()}] ${new Date(m.createdAt).toLocaleString()}\n${m.content}`
+    );
+    const content = `# ${c.title ?? `Conversation #${c.id}`}\n\n` + lines.join("\n\n---\n\n");
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `conversation-${c.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const startEditing = (c: Conversation, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(c.id);
@@ -130,7 +159,9 @@ export default function AiPage() {
       setPreviewStatus("done");
       setPreviewMessage(res.message);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "오류 발생";
+      const axiosError = e as { response?: { data?: { error?: string } } };
+      const msg = axiosError?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "오류 발생");
       setPreviewStatus("error");
       setPreviewMessage(msg);
     }
@@ -141,6 +172,29 @@ export default function AiPage() {
     await cancelManifest(activeConversationId).catch(() => {});
     setPreviewStatus("cancelled");
     setPreviewMessage("취소되었습니다.");
+  };
+
+  const handleStop = () => {
+    abortRef.current?.abort();
+  };
+
+  const handleCopy = (content: string, index: number) => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    });
+  };
+
+  const handleRate = (traceId: number, rating: "up" | "down") => {
+    const next = feedback[traceId]?.rating === rating ? undefined : rating;
+    setFeedback((f) => ({ ...f, [traceId]: { ...f[traceId], rating: next } }));
+    if (next) rateTrace(traceId, next).catch(() => {});
+  };
+
+  const handleExclude = (traceId: number) => {
+    const next = !feedback[traceId]?.excluded;
+    setFeedback((f) => ({ ...f, [traceId]: { ...f[traceId], excluded: next } }));
+    excludeTrace(traceId, next).catch(() => {});
   };
 
   const handleSend = async (text?: string) => {
@@ -154,6 +208,9 @@ export default function AiPage() {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setStreaming(true);
     setActiveTool(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     let newConversationId: number | null = null;
 
@@ -179,6 +236,16 @@ export default function AiPage() {
           setPreviewStatus("pending");
           setActiveTool(null);
         },
+        onTrace: (traceId) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === "assistant") {
+              updated[updated.length - 1] = { ...last, traceId };
+            }
+            return updated;
+          });
+        },
         onDone: (id) => {
           newConversationId = id;
           setActiveTool(null);
@@ -195,10 +262,17 @@ export default function AiPage() {
           });
           setActiveTool(null);
         },
-      });
+      }, controller.signal);
     } finally {
       setStreaming(false);
-      if (newConversationId && newConversationId !== activeConversationId) {
+      abortRef.current = null;
+      if (controller.signal.aborted) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return last?.role === "assistant" && !last.content ? prev.slice(0, -1) : prev;
+        });
+        setActiveTool(null);
+      } else if (newConversationId && newConversationId !== activeConversationId) {
         setActiveConversationId(newConversationId);
         queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
       }
@@ -214,94 +288,130 @@ export default function AiPage() {
   ];
 
   const isDelete = pendingPreview?.action === "delete_manifest";
+  const isClusterDelete = pendingPreview?.action === "delete_cluster";
+  const isDestructiveCluster = pendingPreview?.action === "stop_cluster" || isClusterDelete;
+  const isYamlAction = pendingPreview?.action === "apply_manifest" || pendingPreview?.action === "delete_manifest";
+
+  const SidebarContent = () => (
+    <>
+      <div className="flex items-center justify-between px-3 py-3 border-b">
+        <span className="text-sm font-medium text-muted-foreground">
+          {t("ai.conversations")}
+        </span>
+        <button
+          onClick={handleNewConversation}
+          className="p-1 rounded hover:bg-accent"
+          title={t("ai.new_conversation")}
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+      <nav className="flex-1 overflow-y-auto py-2 space-y-0.5 px-2">
+        {conversations.map((c) => (
+          <div
+            key={c.id}
+            className={`group flex items-center rounded transition-colors ${
+              activeConversationId === c.id
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            {editingId === c.id ? (
+              <div className="flex flex-1 items-center gap-1 px-1 py-0.5">
+                <input
+                  autoFocus
+                  className="flex-1 min-w-0 text-xs bg-background border rounded px-1 py-0.5 focus:outline-none"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmRename(c.id);
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                />
+                <button onClick={() => confirmRename(c.id)} className="shrink-0 hover:text-foreground">
+                  <Check className="w-3 h-3" />
+                </button>
+                <button onClick={() => setEditingId(null)} className="shrink-0 hover:text-foreground">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => { loadConversation(c.id); setSidebarOpen(false); }}
+                  className="flex-1 min-w-0 text-left px-2 py-1.5 text-xs truncate min-h-[28px]"
+                >
+                  {c.title ?? `#${c.id} ${new Date(c.createdAt).toLocaleDateString()}`}
+                </button>
+                <div className="hidden group-hover:flex items-center gap-0.5 pr-1 shrink-0">
+                  <button
+                    onClick={(e) => handleSaveConversation(c, e)}
+                    className="p-0.5 rounded hover:text-foreground"
+                    title="대화 저장"
+                  >
+                    <Download className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => startEditing(c, e)}
+                    className="p-0.5 rounded hover:text-foreground"
+                    title="이름 변경"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(c.id); }}
+                    className="p-0.5 rounded hover:text-destructive"
+                    title="삭제"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </nav>
+      <div className="p-2 border-t">
+        <Link
+          href="/settings/ai"
+          className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground rounded hover:bg-accent hover:text-accent-foreground transition-colors"
+        >
+          <Settings className="w-3.5 h-3.5" />
+          {t("ai.settings.title")}
+        </Link>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Conversation sidebar */}
+      {/* Mobile sidebar drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-64 flex flex-col bg-background border-r shadow-lg transition-transform duration-200">
+            <SidebarContent />
+          </aside>
+        </div>
+      )}
+
+      {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-52 border-r bg-muted/20 shrink-0">
-        <div className="flex items-center justify-between px-3 py-3 border-b">
-          <span className="text-sm font-medium text-muted-foreground">
-            {t("ai.conversations")}
-          </span>
-          <button
-            onClick={handleNewConversation}
-            className="p-1 rounded hover:bg-accent"
-            title={t("ai.new_conversation")}
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-        <nav className="flex-1 overflow-y-auto py-2 space-y-0.5 px-2">
-          {conversations.map((c) => (
-            <div
-              key={c.id}
-              className={`group flex items-center rounded transition-colors ${
-                activeConversationId === c.id
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              {editingId === c.id ? (
-                <div className="flex flex-1 items-center gap-1 px-1 py-0.5">
-                  <input
-                    autoFocus
-                    className="flex-1 min-w-0 text-xs bg-background border rounded px-1 py-0.5 focus:outline-none"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") confirmRename(c.id);
-                      if (e.key === "Escape") setEditingId(null);
-                    }}
-                  />
-                  <button onClick={() => confirmRename(c.id)} className="shrink-0 hover:text-foreground">
-                    <Check className="w-3 h-3" />
-                  </button>
-                  <button onClick={() => setEditingId(null)} className="shrink-0 hover:text-foreground">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={() => loadConversation(c.id)}
-                    className="flex-1 min-w-0 text-left px-2 py-1.5 text-xs truncate"
-                  >
-                    {c.title ?? `#${c.id} ${new Date(c.createdAt).toLocaleDateString()}`}
-                  </button>
-                  <div className="hidden group-hover:flex items-center gap-0.5 pr-1 shrink-0">
-                    <button
-                      onClick={(e) => startEditing(c, e)}
-                      className="p-0.5 rounded hover:text-foreground"
-                      title="이름 변경"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(c.id); }}
-                      className="p-0.5 rounded hover:text-destructive"
-                      title="삭제"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </nav>
-        <div className="p-2 border-t">
-          <Link
-            href="/settings/ai"
-            className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground rounded hover:bg-accent hover:text-accent-foreground transition-colors"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            {t("ai.settings.title")}
-          </Link>
-        </div>
+        <SidebarContent />
       </aside>
 
       {/* Chat area */}
       <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex items-center md:hidden px-3 py-2 border-b gap-2">
+          <button onClick={() => setSidebarOpen(true)} className="p-1 rounded hover:bg-accent">
+            <Menu className="w-4 h-4" />
+          </button>
+          <span className="text-sm font-medium truncate">
+            {activeConversationId
+              ? (conversations.find(c => c.id === activeConversationId)?.title ?? `#${activeConversationId}`)
+              : t("ai.new_conversation")}
+          </span>
+        </div>
         {configMissing && (
           <div className="flex items-center gap-3 px-4 py-2 bg-yellow-50 dark:bg-yellow-950/30 border-b border-yellow-200 dark:border-yellow-800 text-sm text-yellow-800 dark:text-yellow-300">
             <span>{t("ai.config_missing")}</span>
@@ -338,8 +448,9 @@ export default function AiPage() {
               key={i}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
+              <div className={`relative group max-w-[80%]`}>
               <div
-                className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                className={`px-3 py-2 rounded-lg text-sm ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground whitespace-pre-wrap"
                     : "bg-muted prose prose-sm dark:prose-invert max-w-none"
@@ -382,6 +493,43 @@ export default function AiPage() {
                   </ReactMarkdown>
                 ) : null}
               </div>
+              {msg.role === "assistant" && msg.content && (
+                <div className="absolute -bottom-5 right-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleCopy(msg.content, i)}
+                    className="p-1 rounded hover:bg-accent"
+                    title="복사"
+                  >
+                    {copiedIndex === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                  </button>
+                  {msg.traceId != null && (
+                    <>
+                      <button
+                        onClick={() => handleRate(msg.traceId!, "up")}
+                        className="p-1 rounded hover:bg-accent"
+                        title="좋은 응답 (학습 긍정)"
+                      >
+                        <ThumbsUp className={`w-3 h-3 ${feedback[msg.traceId]?.rating === "up" ? "text-green-500" : "text-muted-foreground"}`} />
+                      </button>
+                      <button
+                        onClick={() => handleRate(msg.traceId!, "down")}
+                        className="p-1 rounded hover:bg-accent"
+                        title="나쁜 응답 (학습 부정)"
+                      >
+                        <ThumbsDown className={`w-3 h-3 ${feedback[msg.traceId]?.rating === "down" ? "text-red-500" : "text-muted-foreground"}`} />
+                      </button>
+                      <button
+                        onClick={() => handleExclude(msg.traceId!)}
+                        className="p-1 rounded hover:bg-accent"
+                        title="학습에서 제외"
+                      >
+                        <Ban className={`w-3 h-3 ${feedback[msg.traceId]?.excluded ? "text-orange-500" : "text-muted-foreground"}`} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              </div>
             </div>
           ))}
 
@@ -396,37 +544,43 @@ export default function AiPage() {
 
           {/* Manifest 미리보기 카드 */}
           {pendingPreview && (
-            <div className={`w-full rounded-lg border-2 overflow-hidden ${
-              isDelete ? "border-red-400 dark:border-red-600" : "border-blue-400 dark:border-blue-600"
+            <div className={`w-full rounded-xl border-2 overflow-hidden ${
+              (isDelete || isDestructiveCluster) ? "border-red-400 dark:border-red-600" : "border-blue-400 dark:border-blue-600"
             }`}>
               {/* 헤더 + 버튼 */}
               <div className={`flex items-center justify-between px-4 py-3 ${
-                isDelete ? "bg-red-50 dark:bg-red-950/30" : "bg-blue-50 dark:bg-blue-950/30"
+                (isDelete || isDestructiveCluster) ? "bg-red-50 dark:bg-red-950/30" : "bg-blue-50 dark:bg-blue-950/30"
               }`}>
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  {isDelete && <AlertTriangle className="w-4 h-4 text-red-500" />}
+                  {(isDelete || isDestructiveCluster) && <AlertTriangle className="w-4 h-4 text-red-500" />}
                   <span>
-                    클러스터 <strong>{pendingPreview.clusterName}</strong>에{" "}
-                    {isDelete ? "다음 리소스를 삭제" : "다음 매니페스트를 적용"}할까요?
+                    {pendingPreview.action === "apply_manifest" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>에 다음 매니페스트를 적용할까요?</>}
+                    {pendingPreview.action === "delete_manifest" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>에서 다음 리소스를 삭제할까요?</>}
+                    {pendingPreview.action === "scale_deployment" && <>다음 디플로이먼트를 스케일할까요?</>}
+                    {pendingPreview.action === "restart_deployment" && <>다음 디플로이먼트를 재시작할까요?</>}
+                    {pendingPreview.action === "start_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 시작할까요?</>}
+                    {pendingPreview.action === "stop_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 정지할까요?</>}
+                    {pendingPreview.action === "create_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 생성할까요?</>}
+                    {pendingPreview.action === "delete_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 삭제할까요?</>}
                   </span>
                 </div>
                 {previewStatus === "pending" && previewReady && (
                   <div className="flex gap-2 shrink-0">
                     <button
                       onClick={handleCancel}
-                      className="px-3 py-1 text-xs border rounded hover:bg-accent transition-colors"
+                      className="px-4 py-1.5 text-xs border border-primary text-primary rounded-pill hover:bg-primary/5 transition-transform active:scale-95"
                     >
                       취소
                     </button>
                     <button
                       onClick={handleConfirm}
-                      className={`px-3 py-1 text-xs text-white rounded transition-colors ${
-                        isDelete
-                          ? "bg-red-500 hover:bg-red-600"
-                          : "bg-blue-500 hover:bg-blue-600"
+                      className={`px-4 py-1.5 text-xs text-white rounded-pill transition-[transform,background-color] active:scale-95 ${
+                        (isDelete || isDestructiveCluster)
+                          ? "bg-destructive hover:bg-destructive/90"
+                          : "bg-primary hover:bg-primary/90"
                       }`}
                     >
-                      {isDelete ? "삭제 확인" : "적용"}
+                      {(isDelete || isClusterDelete) ? "삭제 확인" : isDestructiveCluster ? "정지 확인" : "확인"}
                     </button>
                   </div>
                 )}
@@ -436,7 +590,7 @@ export default function AiPage() {
                 {previewStatus === "loading" && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    {isDelete ? "삭제 중..." : "적용 중..."}
+                    {(isDelete || isClusterDelete) ? "삭제 중..." : "적용 중..."}
                   </div>
                 )}
                 {(previewStatus === "done" || previewStatus === "error" || previewStatus === "cancelled") && (
@@ -449,7 +603,7 @@ export default function AiPage() {
                   </span>
                 )}
               </div>
-              {/* YAML */}
+              {/* 상세 정보 */}
               <div className="max-h-64 overflow-y-auto bg-muted/40 p-3">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">
                   {pendingPreview.yaml}
@@ -463,13 +617,18 @@ export default function AiPage() {
 
         {/* Input */}
         <div className="border-t px-4 py-3">
-          <div className="flex gap-2">
-            <input
-              className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          <div className="flex gap-2 items-end">
+            <textarea
+              className="flex-1 px-4 py-2 text-sm border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 resize-none min-h-[38px] max-h-[160px] overflow-y-auto"
               placeholder={t("ai.placeholder")}
               value={input}
+              rows={1}
               disabled={streaming || configMissing === true}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -477,18 +636,24 @@ export default function AiPage() {
                 }
               }}
             />
-            <button
-              onClick={() => handleSend()}
-              disabled={streaming || !input.trim() || configMissing === true}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {streaming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
+            {streaming ? (
+              <button
+                onClick={handleStop}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-pill hover:bg-destructive/90 transition-[transform,background-color] active:scale-95"
+              >
+                <Square className="w-4 h-4" />
+                중단
+              </button>
+            ) : (
+              <button
+                onClick={() => handleSend()}
+                disabled={!input.trim() || configMissing === true}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-pill hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-[transform,background-color] active:scale-95"
+              >
                 <Send className="w-4 h-4" />
-              )}
-              {t("ai.send")}
-            </button>
+                {t("ai.send")}
+              </button>
+            )}
           </div>
         </div>
       </div>

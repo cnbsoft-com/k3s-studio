@@ -133,7 +133,7 @@ export default function ServerDetailPage() {
                   }
                 }}
                 disabled={deleteMutation.isPending}
-                className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 border border-destructive/30 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 {t("server.delete")}
@@ -173,7 +173,7 @@ export default function ServerDetailPage() {
               <button
                 onClick={() => installMutation.mutate()}
                 disabled={installMutation.isPending}
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 transition-transform bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 disabled:opacity-50"
               >
                 {installMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {t("server.multipass.install")}
@@ -191,7 +191,7 @@ export default function ServerDetailPage() {
             <button
               onClick={() => syncMutation.mutate()}
               disabled={syncMutation.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 border px-3 py-1.5 text-sm hover:bg-muted transition-all disabled:opacity-50"
             >
               {syncMutation.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -200,7 +200,7 @@ export default function ServerDetailPage() {
             </button>
             <Link
               href={`/clusters/new?serverId=${serverId}`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-pill active:scale-95 bg-primary text-primary-foreground px-3 py-1.5 text-sm hover:bg-primary/90 transition-all"
             >
               <Plus className="h-4 w-4" />
               {t("cluster.new")}
