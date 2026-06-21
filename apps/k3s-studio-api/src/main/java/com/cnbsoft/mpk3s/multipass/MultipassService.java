@@ -236,6 +236,15 @@ public class MultipassService {
         return executor.execMultipass("exec", clusterName + "-master", "--", "bash", "-lc", sh.toString());
     }
 
+    /** 마스터 노드에서 helm 릴리스를 제거한다. */
+    public String helmUninstall(String clusterName, String releaseName, String namespace)
+            throws IOException, InterruptedException {
+        String rel = requireToken("releaseName", releaseName);
+        String ns = requireToken("namespace", (namespace == null || namespace.isBlank()) ? "default" : namespace);
+        String sh = "sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm uninstall " + rel + " --namespace " + ns;
+        return executor.execMultipass("exec", clusterName + "-master", "--", "bash", "-lc", sh);
+    }
+
     /** 셸 인자 단일따옴표 이스케이프 */
     private String shq(String s) {
         return "'" + s.replace("'", "'\\''") + "'";

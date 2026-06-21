@@ -311,6 +311,12 @@ public class ClusterService {
         return serviceFor(cluster).helmInstall(clusterName, releaseName, chart, namespace, repoName, repoUrl, values);
     }
 
+    public String helmUninstall(String clusterName, String releaseName, String namespace) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        return serviceFor(cluster).helmUninstall(clusterName, releaseName, namespace);
+    }
+
     /**
      * 다운로드용 kubeconfig 변환: 클러스터 정보를 반영한다.
      * - server: https://127.0.0.1 → 마스터 IP (생성 시와 동일하게 networkInterfaceCidr 반영)
