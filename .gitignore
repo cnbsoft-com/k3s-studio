@@ -57,3 +57,7 @@ YC_Application_Analysis.html
 
 # Local env
 .env.local
+.claude
+.gstack
+.idea
+.omc
