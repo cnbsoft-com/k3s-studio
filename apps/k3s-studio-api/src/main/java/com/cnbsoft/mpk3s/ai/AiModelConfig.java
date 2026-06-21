@@ -3,6 +3,7 @@ package com.cnbsoft.mpk3s.ai;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
+import org.hibernate.annotations.ColumnDefault;
 
 @Data
 @Entity
@@ -24,6 +25,7 @@ public class AiModelConfig {
 
     /** 이 프로파일을 채팅에 사용할지 여부. 단 하나만 true 유지 */
     @Column(nullable = false)
+    @ColumnDefault("false") // 기존 행이 있는 테이블에 NOT NULL 컬럼 추가 시 DDL에 SQL 기본값 필요
     private boolean active = false;
 
     /** OpenAI 호환 API 키 (로컬 서버는 비움). 쓰기 전용 — 목록/조회 응답엔 노출하지 않음 */

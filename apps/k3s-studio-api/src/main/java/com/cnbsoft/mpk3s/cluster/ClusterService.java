@@ -304,6 +304,13 @@ public class ClusterService {
         return rewriteKubeconfig(raw, clusterName, svc, cluster.getNetworkInterfaceCidr());
     }
 
+    public String helmInstall(String clusterName, String releaseName, String chart, String namespace,
+                              String repoName, String repoUrl, String values) throws Exception {
+        Cluster cluster = clusterRepository.findByName(clusterName)
+                .orElseThrow(() -> new ClusterNotFoundException(clusterName));
+        return serviceFor(cluster).helmInstall(clusterName, releaseName, chart, namespace, repoName, repoUrl, values);
+    }
+
     /**
      * 다운로드용 kubeconfig 변환: 클러스터 정보를 반영한다.
      * - server: https://127.0.0.1 → 마스터 IP (생성 시와 동일하게 networkInterfaceCidr 반영)

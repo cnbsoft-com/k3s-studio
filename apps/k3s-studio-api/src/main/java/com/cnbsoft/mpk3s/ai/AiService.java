@@ -116,12 +116,16 @@ public class AiService {
                     // 어시스턴트 메시지를 히스토리에 추가 (tool_calls 포함)
                     Map<String, Object> assistantEntry = new HashMap<>();
                     assistantEntry.put("role", "assistant");
-                    if (!textContent.isBlank()) assistantEntry.put("content", textContent);
+                    if (!textContent.isBlank()) {
+                        assistantEntry.put("content", textContent);
+                        fullResponse.append(textContent).append("\n"); // 모델 프리앰블 텍스트도 히스토리에 보존
+                    }
                     assistantEntry.put("tool_calls", toolCalls);
                     messages.add(assistantEntry);
 
                     for (Map<String, Object> toolCall : toolCalls) {
                         String toolCallId = (String) toolCall.getOrDefault("id", "");
+                        try {
                         @SuppressWarnings("unchecked")
                         Map<String, Object> fn = (Map<String, Object>) toolCall.getOrDefault("function", Map.of());
                         String toolName = (String) fn.getOrDefault("name", "");
@@ -159,7 +163,7 @@ public class AiService {
                             }
                             break;
                         }
-                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName)) {
+                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName) || "helm_install".equals(toolName)) {
                             String cluster = requireString(args, "clusterName");
                             Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
                             String displayYaml = buildClusterLifecycleDisplay(toolName, args);
@@ -180,6 +184,14 @@ public class AiService {
                         }
                         if (toolResult.startsWith("오류:")) anyToolError = true;
                         messages.add(Map.of("role", "tool", "tool_call_id", toolCallId, "content", toolResult));
+                        } catch (Exception toolEx) {
+                            // 단일 도구 호출 처리 실패(인자 JSON 파싱/필수값 누락 등)가 턴 전체를
+                            // 날리지 않도록: 오류를 도구 결과로 모델에 돌려주고 계속 진행 → 저장 블록 도달.
+                            anyToolError = true;
+                            log.warn("도구 호출 처리 실패 (tool_call_id={}): {}", toolCallId, toolEx.toString());
+                            messages.add(Map.of("role", "tool", "tool_call_id", toolCallId,
+                                    "content", "오류: 도구 호출 처리 실패 - " + toolEx.getMessage()));
+                        }
                     }
 
                     // preview 이벤트를 보냈으면 루프 종료
@@ -227,7 +239,7 @@ public class AiService {
                                 }
                                 break;
                             }
-                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName)) {
+                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName) || "helm_install".equals(toolName)) {
                                 String cluster = requireString(args, "clusterName");
                                 Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
                                 String displayYaml = buildClusterLifecycleDisplay(toolName, args);
@@ -380,6 +392,18 @@ public class AiService {
                 saveManifestMessage(conversationId, op.action(), op.yaml(), result);
                 yield result;
             }
+            case "helm_install" -> {
+                String release = (String) op.extra().getOrDefault("releaseName", "");
+                String chart = (String) op.extra().getOrDefault("chart", "");
+                String ns = (String) op.extra().getOrDefault("namespace", "default");
+                String repoName = (String) op.extra().get("repoName");
+                String repoUrl = (String) op.extra().get("repoUrl");
+                String values = (String) op.extra().get("values");
+                String out = clusterService.helmInstall(op.clusterName(), release, chart, ns, repoName, repoUrl, values);
+                String result = "Helm 릴리스 '" + release + "' 설치 완료 (namespace: " + ns + ").";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result + "\n\n" + out);
+                yield result;
+            }
             default -> throw new IllegalStateException("알 수 없는 액션: " + op.action());
         };
         markTraceOutcome(conversationId, true);
@@ -477,8 +501,9 @@ public class AiService {
                 리소스 생성/삭제 요청 시 규칙:
                 - YAML을 텍스트로 출력하지 마세요. 반드시 apply_manifest 또는 delete_manifest 도구를 호출하세요.
                 - 사용자가 생성/배포/삭제를 요청하면 즉시 해당 도구를 호출하세요. 먼저 YAML을 보여주거나 확인을 묻지 마세요.
-                - apply_manifest, create_cluster, start_cluster, stop_cluster, delete_cluster 등은 서버가 사용자에게 자동으로 미리보기를 보여주고 확인을 요청합니다.
+                - apply_manifest, create_cluster, start_cluster, stop_cluster, delete_cluster, helm_install 등은 서버가 사용자에게 자동으로 미리보기를 보여주고 확인을 요청합니다.
                 - "클러스터 삭제/제거"는 delete_cluster 도구를 사용하세요 (클러스터의 모든 노드 VM 삭제). delete_manifest는 클러스터 안의 K8s 리소스 삭제용이며 클러스터 삭제가 아닙니다 — 혼동하지 마세요.
+                - "helm 설치", "차트 설치", 또는 공식 Helm 차트가 있는 앱(minio, redis, postgresql, nginx 등) 배포 요청 시에는 apply_manifest로 YAML을 만들지 말고 helm_install 도구를 사용하세요. OCI 차트(oci://...)는 repoName/repoUrl 없이, 일반 repo 차트는 repoName/repoUrl을 함께 전달하세요.
 
                 클러스터 생성(create_cluster) 시 서버 지정 규칙:
                 - 사용자가 특정 서버를 언급하면 serverName 파라미터에 그 서버 이름을 정확히 전달하세요. 예: "mac-mini 서버에 클러스터 생성" → serverName="mac-mini".
@@ -789,7 +814,17 @@ public class AiService {
                         Map.of("type", "object", "properties", Map.of(
                                 "clusterName", strProp("클러스터 이름"),
                                 "yaml", strProp("삭제할 YAML 내용")
-                        ), "required", List.of("clusterName", "yaml")))
+                        ), "required", List.of("clusterName", "yaml"))),
+                tool("helm_install", "Helm 차트로 애플리케이션 설치/업그레이드 (사용자 확인 후 실행됨). 마스터 노드에서 helm 실행, 없으면 자동 설치. YAML을 직접 쓰지 말고 공식 차트가 있으면 이 도구를 사용",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("클러스터 이름"),
+                                "releaseName", strProp("Helm 릴리스 이름 (예: minio)"),
+                                "chart", strProp("차트 (repo 차트 예: bitnami/minio, 또는 OCI 예: oci://registry-1.docker.io/bitnamicharts/minio)"),
+                                "namespace", strProp("네임스페이스 (기본 default, 없으면 자동 생성)"),
+                                "repoName", strProp("Helm 리포 이름 (repo 차트일 때, 예: bitnami)"),
+                                "repoUrl", strProp("Helm 리포 URL (repo 차트일 때, 예: https://charts.bitnami.com/bitnami). OCI 차트는 불필요"),
+                                "values", strProp("--set 오버라이드, 쉼표구분 key=value (선택, 예: auth.rootPassword=xxx,persistence.size=10Gi)")
+                        ), "required", List.of("clusterName", "releaseName", "chart")))
         );
     }
 
@@ -819,6 +854,13 @@ public class AiService {
             extra.put("disk", args.getOrDefault("disk", 20));
             Object serverName = args.get("serverName");
             if (serverName != null) extra.put("serverName", serverName);
+        } else if ("helm_install".equals(toolName)) {
+            extra.put("releaseName", args.getOrDefault("releaseName", ""));
+            extra.put("chart", args.getOrDefault("chart", ""));
+            extra.put("namespace", args.getOrDefault("namespace", "default"));
+            if (args.get("repoName") != null) extra.put("repoName", args.get("repoName"));
+            if (args.get("repoUrl") != null) extra.put("repoUrl", args.get("repoUrl"));
+            if (args.get("values") != null) extra.put("values", args.get("values"));
         }
         return extra;
     }
@@ -838,6 +880,12 @@ public class AiService {
                     + "\ncpu: " + args.getOrDefault("cpu", 2)
                     + "\nmemory: " + args.getOrDefault("memory", 2048) + "MB"
                     + "\ndisk: " + args.getOrDefault("disk", 20) + "GB";
+            case "helm_install" -> "cluster: " + name
+                    + "\nrelease: " + args.getOrDefault("releaseName", "?")
+                    + "\nchart: " + args.getOrDefault("chart", "?")
+                    + "\nnamespace: " + args.getOrDefault("namespace", "default")
+                    + (args.get("repoName") != null ? "\nrepo: " + args.get("repoName") + " (" + args.getOrDefault("repoUrl", "") + ")" : "")
+                    + (args.get("values") != null ? "\nvalues: " + args.get("values") : "");
             default -> "cluster: " + name;
         };
     }

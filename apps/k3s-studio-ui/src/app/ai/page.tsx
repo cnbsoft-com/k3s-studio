@@ -18,6 +18,8 @@ import {
   cancelManifest,
   rateTrace,
   excludeTrace,
+  listAiConfigs,
+  activateAiConfig,
   type Conversation,
   type PreviewPayload,
 } from "@/lib/ai";
@@ -67,6 +69,16 @@ export default function AiPage() {
   const { data: conversations = [] } = useQuery<Conversation[]>({
     queryKey: ["ai-conversations"],
     queryFn: listConversations,
+  });
+
+  const { data: aiConfigs = [] } = useQuery({ queryKey: ["ai-configs"], queryFn: listAiConfigs });
+  const activeConfigId = aiConfigs.find((c) => c.active)?.id;
+  const switchModel = useMutation({
+    mutationFn: activateAiConfig,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["ai-config"] });
+    },
   });
 
   useEffect(() => {
@@ -371,7 +383,22 @@ export default function AiPage() {
           </div>
         ))}
       </nav>
-      <div className="p-2 border-t">
+      <div className="p-2 border-t space-y-1.5">
+        {aiConfigs.length > 0 && (
+          <select
+            value={activeConfigId ?? ""}
+            onChange={(e) => switchModel.mutate(Number(e.target.value))}
+            disabled={switchModel.isPending}
+            title="LLM 서버 전환"
+            className="w-full px-2.5 py-1.5 text-xs border rounded-pill bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          >
+            {aiConfigs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || c.modelName}
+              </option>
+            ))}
+          </select>
+        )}
         <Link
           href="/settings/ai"
           className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground rounded hover:bg-accent hover:text-accent-foreground transition-colors"
@@ -562,6 +589,7 @@ export default function AiPage() {
                     {pendingPreview.action === "stop_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 정지할까요?</>}
                     {pendingPreview.action === "create_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 생성할까요?</>}
                     {pendingPreview.action === "delete_cluster" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>을 삭제할까요?</>}
+                    {pendingPreview.action === "helm_install" && <>클러스터 <strong>{pendingPreview.clusterName}</strong>에 다음 Helm 차트를 설치할까요?</>}
                   </span>
                 </div>
                 {previewStatus === "pending" && previewReady && (
