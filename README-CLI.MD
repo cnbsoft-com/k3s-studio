@@ -1,7 +1,7 @@
 # mpk3s - Multipass K3s Cluster Manager 🦖
 
-[![License](https://img.shields.io/github/license/cnbsoft-com/k3s-helper)](https://github.com/cnbsoft-com/k3s-helper/blob/main/LICENSE)
-[![Version](https://img.shields.io/github/v/release/cnbsoft-com/k3s-helper)](https://github.com/cnbsoft-com/k3s-helper/releases)
+[![License](https://img.shields.io/github/license/cnbsoft-com/k3s-studio)](https://github.com/cnbsoft-com/k3s-studio/blob/main/LICENSE)
+[![Version](https://img.shields.io/github/v/release/cnbsoft-com/k3s-studio)](https://github.com/cnbsoft-com/k3s-studio/releases)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 ![Language](https://img.shields.io/badge/language-shell-brightgreen)
 
@@ -15,7 +15,7 @@
 - [⚠️ WARNING](#️-warning-for-development-and-testing-only)
 - [🚀 Key Features](#-key-features)
 - [🛠 Prerequisites](#-prerequisites)
-- [🍺 Installation via Homebrew](#-installation-via-homebrew-upcoming)
+- [🍺 Installation via Homebrew](#-installation-via-homebrew)
 - [🚀 Direct Installation (One-liner)](#-direct-installation-one-liner)
 - [💻 Usage](#usage)
 - [📂 Project Structure](#-project-structure)
@@ -50,10 +50,11 @@ It is NOT designed or recommended for production use. The simplified security co
 - **Multipass** installed ([https://multipass.run](https://multipass.run))
 - **curl** (for K3s installation)
 
-## 🍺 Installation via Homebrew (Upcoming)
+## 🍺 Installation via Homebrew
 
 ```bash
 brew tap cnbsoft-com/tap
+brew trust cnbsoft-com/tap   # 최신 Homebrew는 서드파티 tap 신뢰가 필요합니다 (Recent Homebrew requires trusting third-party taps)
 brew install mpk3s
 ```
 
@@ -62,7 +63,7 @@ brew install mpk3s
 `brew tap` 없이 한 줄의 명령어로 즉시 설치할 수 있습니다. (Install immediately with a single command without `brew tap`.)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cnbsoft-com/k3s-helper/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/cnbsoft-com/k3s-studio/main/install.sh | bash
 ```
 
 ## Usage
@@ -96,20 +97,20 @@ mpk3s delcluster  # 클러스터 전체 및 관련 설정 파일 완벽 삭제 (
 ## 📂 Project Structure
 
 ```text
-k3s-helper/
-├── bin/          # mpk3s 메인 실행 파일 (mpk3s main executable file)
-├── libs/         # 핵심 기능을 담당하는 모듈화된 스크립트 (Modularized scripts for core features)
-└── dev-logs/     # 일자별 개발 기록 및 결정 사항 (Daily development logs and decisions)
+k3s-studio/
+├── bin/          # mpk3s 단일 실행 스크립트 (mpk3s standalone executable script)
+├── install.sh    # 원라인 설치 스크립트 (One-liner installation script)
+└── apps/         # Web UI · REST API · MCP 서버 (별도 README.md 참고) (Web UI, REST API, MCP server — see main README.md)
 ```
 
 ## 🗺️ Roadmap (향후 계획)
 
 앞으로 다음과 같은 기능들을 추가하여 도구의 완성도를 높여갈 예정입니다. (I plan to enhance the tool's completeness by adding the following features in the future.)
 
-1. **Multipass 사양 변경 기능: (Multipass Spec Customization:)**
+- [x] **Multipass 사양 변경 기능: (Multipass Spec Customization:)** _(완료: 2026-02-11)_
   - CPU 코어 수, 메모리 용량, 디스크 사이즈를 자유롭게 지정하는 기능 (Ability to customize CPU cores, memory capacity, and disk size.)
-2. **마운트 기능: (Mount Support:)**
-  - 호스트와 VM 간의 디렉토리 공유를 위한 마운트 기능 추가 (Add mount support for directory sharing between the host and VMs.)
+- [ ] **마운트 기능: (Mount Support:)** ([#16](https://github.com/cnbsoft-com/k3s-studio/issues/16))
+  - 호스트와 VM 간의 디렉토리 공유(NAS/NFS)를 위한 마운트 기능 추가 (Add mount support for directory sharing between the host and VMs.)
 
 ## 📄 License
 This project is licensed under the **MIT License**.
