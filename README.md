@@ -126,6 +126,15 @@ npm install && npm run build
 
 ---
 
+## Roadmap
+
+진행 중인 기능 제안은 [GitHub Issues](https://github.com/cnbsoft-com/k3s-studio/issues)에서 추적합니다.
+
+- [ ] 마운트 기능 (호스트 ↔ VM 디렉토리 공유) — [#16](https://github.com/cnbsoft-com/k3s-studio/issues/16)
+- [ ] kubeconfig 클립보드 복사 — [#17](https://github.com/cnbsoft-com/k3s-studio/issues/17)
+
+---
+
 ## License
 
 MIT License — [LICENSE](LICENSE)
