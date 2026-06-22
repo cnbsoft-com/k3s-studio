@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <changeSet id="V2__create_jobs_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="jobs"/>
+            </not>
+        </preConditions>
+
+        <sql>CREATE EXTENSION IF NOT EXISTS pgcrypto;</sql>
+
+        <createTable tableName="jobs">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="cluster_name" type="VARCHAR(100)"/>
+            <column name="type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="log" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()"/>
+            <column name="finished_at" type="TIMESTAMPTZ"/>
+        </createTable>
+
+        <createIndex tableName="jobs" indexName="idx_jobs_cluster_name">
+            <column name="cluster_name"/>
+        </createIndex>
+        <createIndex tableName="jobs" indexName="idx_jobs_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

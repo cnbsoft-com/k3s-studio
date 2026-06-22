@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <changeSet id="V1__create_clusters_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="clusters"/>
+            </not>
+        </preConditions>
+
+        <createTable tableName="clusters">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="master_spec" type="VARCHAR(50)"/>
+            <column name="master_cpus" type="INT"/>
+            <column name="master_memory" type="VARCHAR(10)"/>
+            <column name="master_disk" type="VARCHAR(10)"/>
+            <column name="worker_count" type="INT" defaultValueNumeric="0"/>
+            <column name="ubuntu_image" type="VARCHAR(100)"/>
+            <column name="options" type="JSONB"/>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()"/>
+            <column name="updated_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()"/>
+        </createTable>
+
+        <sql splitStatements="false">
+            CREATE OR REPLACE FUNCTION update_updated_at_column()
+            RETURNS TRIGGER AS $$
+            BEGIN
+              NEW.updated_at = NOW();
+              RETURN NEW;
+            END;
+            $$ language 'plpgsql';
+        </sql>
+
+        <sql>
+            CREATE TRIGGER update_clusters_updated_at
+              BEFORE UPDATE ON clusters
+              FOR EACH ROW
+              EXECUTE FUNCTION update_updated_at_column();
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

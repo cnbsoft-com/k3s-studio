@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <include file="changes/V1__create_clusters_table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V2__create_jobs_table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V3__create_servers_table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V4__create_manifests_table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V5__create_apply_history_table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V6__create_ai_tables.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V7__add_server_and_network_columns.xml" relativeToChangelogFile="true"/>
+    <include file="changes/V8__align_varchar_lengths.xml" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

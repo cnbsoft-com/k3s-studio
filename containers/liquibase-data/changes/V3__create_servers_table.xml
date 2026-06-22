@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <changeSet id="V3__create_servers_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="servers"/>
+            </not>
+        </preConditions>
+
+        <createTable tableName="servers">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uk_servers_name"/>
+            </column>
+            <column name="host" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="port" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="username" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="private_key" type="TEXT"/>
+            <column name="local" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ"/>
+            <column name="last_seen_at" type="TIMESTAMPTZ"/>
+        </createTable>
+
+        <sql>
+            ALTER TABLE servers ADD CONSTRAINT servers_status_check
+              CHECK (status IN ('CONNECTED', 'UNREACHABLE', 'UNKNOWN', 'INSTALLING_MULTIPASS'));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

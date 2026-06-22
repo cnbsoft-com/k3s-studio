@@ -17,5 +17,23 @@ services:
       timeout: 5s
       retries: 5
 
+  # Liquibase DB 마이그레이션 (changelog: ./liquibase-data, opt-in)
+  # 실행: docker compose --profile migrate run --rm liquibase update
+  liquibase:
+    image: liquibase/liquibase:4.27
+    profiles: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./liquibase-data:/liquibase/changelog:ro
+    environment:
+      LIQUIBASE_SEARCH_PATH: /liquibase/changelog
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: db.changelog-master.xml
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/mpk3s
+      LIQUIBASE_COMMAND_USERNAME: mpk3s
+      LIQUIBASE_COMMAND_PASSWORD: mpk3s
+    command: ["update"]
+
 volumes:
   postgres_data:

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <changeSet id="V6_1__create_ai_conversation_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="ai_conversation"/>
+            </not>
+        </preConditions>
+        <createTable tableName="ai_conversation">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="title" type="VARCHAR(255)"/>
+            <column name="created_at" type="TIMESTAMPTZ"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="V6_2__create_ai_message_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="ai_message"/>
+            </not>
+        </preConditions>
+        <createTable tableName="ai_message">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="conversation_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="V6_3__create_ai_agent_trace_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="ai_agent_trace"/>
+            </not>
+        </preConditions>
+        <createTable tableName="ai_agent_trace">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="conversation_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="turn_index" type="INT"/>
+            <column name="user_message" type="TEXT"/>
+            <column name="messages_json" type="TEXT"/>
+            <column name="env_snapshot_json" type="TEXT"/>
+            <column name="model_name" type="VARCHAR(255)"/>
+            <column name="round_count" type="INT"/>
+            <column name="finish_reason" type="VARCHAR(255)"/>
+            <column name="tool_schema_hash" type="VARCHAR(255)"/>
+            <column name="tool_error" type="BOOLEAN"/>
+            <column name="confirmed" type="BOOLEAN"/>
+            <column name="cancelled" type="BOOLEAN"/>
+            <column name="excluded" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_rating" type="VARCHAR(255)"/>
+            <column name="created_at" type="TIMESTAMPTZ"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="V6_4__create_ai_model_config_table" author="mpk3s">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="ai_model_config"/>
+            </not>
+        </preConditions>
+        <createTable tableName="ai_model_config">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="model_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model_url" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="api_key" type="VARCHAR(255)"/>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

@@ -28,8 +28,8 @@ k3s-studio/
 │   ├── k3s-studio-api/   # Spring Boot 3.4 REST API (포트 9090)
 │   ├── k3s-studio-ui/    # Next.js 15 Web UI (포트 3000)
 │   └── k3s-studio-mcp/   # MCP Server (Claude Desktop 연동)
-├── containers/           # PostgreSQL 17 Docker Compose
-├── data-manager/         # Liquibase DB 스키마 관리
+├── containers/           # PostgreSQL 17 + Liquibase Docker Compose
+│   └── liquibase-data/   # Liquibase DB 스키마 changelog (XML)
 └── bin/                  # CLI 실행 스크립트
 ```
 

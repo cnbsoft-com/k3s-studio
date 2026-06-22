@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      hibernate(ddl-auto:update)가 length 미지정 엔티티 컬럼을 VARCHAR(255)로 생성하여,
+      V1/V2의 의도된 길이와 라이브 DB가 어긋남. 라이브 DB 기준(255)으로 정렬한다.
+    -->
+    <changeSet id="V8__align_varchar_lengths" author="mpk3s">
+        <modifyDataType tableName="clusters" columnName="name" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="clusters" columnName="status" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="clusters" columnName="master_spec" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="clusters" columnName="master_memory" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="clusters" columnName="master_disk" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="clusters" columnName="ubuntu_image" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="jobs" columnName="cluster_name" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="jobs" columnName="status" newDataType="VARCHAR(255)"/>
+        <modifyDataType tableName="jobs" columnName="type" newDataType="VARCHAR(255)"/>
+    </changeSet>
+
+</databaseChangeLog>
