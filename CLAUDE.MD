@@ -10,6 +10,13 @@ Before reading files, always use qmd to search.
 ## Rules: Commit User
 CHOI IKYONG<ikyong.choi@gmail.com>
 
+## Rules: Issue Workflow
+GitHub 이슈 작업 시에는 반드시 새 브랜치를 먼저 생성한 뒤 작업한다.
+- 브랜치 이름: `feat/issue-<번호>-<짧은설명>` (예: `feat/issue-17-kubeconfig-clipboard`)
+- 현재 프로젝트 디렉터리에서 작업한다 (worktree 격리 사용 안 함).
+- 커밋 메시지에 `Closes #<번호>`를 포함한다.
+- 작업 완료 후 PR 생성 흐름으로 머지한다 (main 직접 푸시 금지).
+
 ## Rules: Token Optimization
 1. Trust skills/memory - skip re-reading files
 2. No speculative tool calls
