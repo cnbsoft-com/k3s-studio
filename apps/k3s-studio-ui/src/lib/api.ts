@@ -154,6 +154,9 @@ export const getClusters = (serverId?: number) =>
 export const getCluster = (name: string) =>
   api.get<ClusterResponse>(`/clusters/${name}`).then((r) => r.data);
 
+export const getKubeconfig = (name: string) =>
+  api.get<string>(`/clusters/${name}/kubeconfig`, { responseType: "text" }).then((r) => r.data);
+
 export const createCluster = (data: CreateClusterRequest) =>
   api.post<{ jobId: string }>("/clusters", data).then((r) => r.data);
 

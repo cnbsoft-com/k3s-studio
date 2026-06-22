@@ -15,7 +15,9 @@ import {
   getApplyHistory,
   getPodLogs,
   setNodeHardware,
+  getKubeconfig,
 } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 import { StatusBadge } from "@/components/status-badge";
 import { NodeTable } from "@/components/node-table";
 import { JobLogViewer } from "@/components/job-log-viewer";
@@ -24,7 +26,7 @@ import { NamespaceSelector } from "@/components/namespace-selector";
 import { K8sResourceTable } from "@/components/k8s-resource-table";
 import { ManifestEditor } from "@/components/manifest-editor";
 import { toast } from "sonner";
-import { Trash2, Plus, Shield, Download, Play, Square, RotateCcw, PauseCircle } from "lucide-react";
+import { Trash2, Plus, Shield, Download, Copy, Play, Square, RotateCcw, PauseCircle } from "lucide-react";
 import { useTranslation } from "@/contexts/I18nContext";
 
 type ResourceType = "pods" | "services" | "deployments" | "configmaps" | "statefulsets" | "ingresses" | "secrets";
@@ -689,6 +691,19 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
             className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-4 py-2 text-sm hover:bg-muted">
             <Download className="h-4 w-4" /> {t("cluster.kubeconfig")}
           </a>
+          <button onClick={async () => {
+            try {
+              const content = await getKubeconfig(name);
+              await copyToClipboard(content);
+              toast.success(t("cluster.kubeconfig_copied"));
+            } catch (e) {
+              console.error("kubeconfig copy failed", e);
+              toast.error(t("cluster.kubeconfig_copy_failed") + ": " + (e instanceof Error ? e.message : String(e)));
+            }
+          }}
+            className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border px-4 py-2 text-sm hover:bg-muted">
+            <Copy className="h-4 w-4" /> {t("cluster.kubeconfig_copy")}
+          </button>
           <button onClick={() => setShowDeleteDialog(true)}
             className="inline-flex items-center gap-2 rounded-pill active:scale-95 transition-transform border border-destructive text-destructive px-4 py-2 text-sm hover:bg-destructive/10">
             <Trash2 className="h-4 w-4" /> {t("cluster.actions.delete")}
