@@ -55,6 +55,11 @@ YC_Application_Analysis.html
 # OMC tooling state
 .omc/
 
+# Python (ai)
+ai/.venv/
+__pycache__/
+*.pyc
+
 # Local env
 .env.local
 .claude
