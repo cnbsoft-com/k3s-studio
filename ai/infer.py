@@ -12,7 +12,7 @@ import sys
 
 from mlx_lm import generate, load
 
-MODEL = os.environ.get("MODEL", "mlx-community/Qwen3.5-4B-4bit")
+MODEL = os.environ.get("MODEL", "mlx-community/Qwen3.5-4B-MLX-4bit")
 
 
 def main() -> None:

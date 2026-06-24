@@ -65,7 +65,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```bash
 python ai/infer.py "Apple Silicon에서 MLX란?"
-MODEL=mlx-community/Qwen3.5-4B-4bit python ai/infer.py "..."
+MODEL=mlx-community/Qwen3.5-4B-MLX-4bit python ai/infer.py "..."
 ```
 
 > 모델은 최초 실행 시 HuggingFace 캐시로 다운로드된다.
