@@ -54,6 +54,7 @@ export default function AiPage() {
   const [previewReady, setPreviewReady] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const prevConversationIdRef = useRef<number | null>(null);
 
@@ -207,6 +208,19 @@ export default function AiPage() {
     const next = !feedback[traceId]?.excluded;
     setFeedback((f) => ({ ...f, [traceId]: { ...f[traceId], excluded: next } }));
     excludeTrace(traceId, next).catch(() => {});
+  };
+
+  // 과거 user 입력을 입력창으로 불러와 수정 후 재전송 (변형 B)
+  const editInput = (content: string) => {
+    setInput(content);
+    setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(content.length, content.length);
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 160) + "px";
+    }, 0);
   };
 
   const handleSend = async (text?: string) => {
@@ -520,6 +534,17 @@ export default function AiPage() {
                   </ReactMarkdown>
                 ) : null}
               </div>
+              {msg.role === "user" && msg.content && !streaming && (
+                <div className="absolute -bottom-5 right-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => editInput(msg.content)}
+                    className="p-1 rounded hover:bg-accent"
+                    title={t("ai.edit_rerun")}
+                  >
+                    <Pencil className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                </div>
+              )}
               {msg.role === "assistant" && msg.content && (
                 <div className="absolute -bottom-5 right-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
@@ -647,6 +672,7 @@ export default function AiPage() {
         <div className="border-t px-4 py-3">
           <div className="flex gap-2 items-end">
             <textarea
+              ref={inputRef}
               className="flex-1 px-4 py-2 text-sm border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 resize-none min-h-[38px] max-h-[160px] overflow-y-auto"
               placeholder={t("ai.placeholder")}
               value={input}
