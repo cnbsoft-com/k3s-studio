@@ -1,2 +1,3 @@
 cors:
-  allowed-origins: http://192.168.0.209:3000,http://192.168.0.209:3001
+  # 로컬 dev: localhost/LAN IP·포트 변동 무관하게 허용 (allowedOriginPatterns)
+  allowed-origins: "*"

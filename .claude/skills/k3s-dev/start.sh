@@ -37,9 +37,13 @@ for i in {1..20}; do docker exec "$PG_CONTAINER" pg_isready -U mpk3s -d mpk3s >/
 
 # 2) rapid-mlx 모델 서버 -----------------------------------------------------
 echo "[2/5] rapid-mlx ($MODEL :$MODEL_PORT)"
-if up "http://127.0.0.1:$MODEL_PORT/v1/models"; then
-  echo "  ✓ 이미 실행 중"
+if curl -sf --max-time 2 "http://127.0.0.1:$MODEL_PORT/v1/models" 2>/dev/null | grep -q "\"$MODEL\""; then
+  echo "  ✓ 이미 실행 중 ($MODEL)"
 else
+  if up "http://127.0.0.1:$MODEL_PORT/v1/models"; then
+    echo "  ! :$MODEL_PORT 에 다른 모델이 떠 있음 → 교체"
+    lsof -ti "tcp:$MODEL_PORT" 2>/dev/null | xargs kill 2>/dev/null; sleep 2
+  fi
   [ -x "$ROOT/ai/.venv/bin/rapid-mlx" ] || { echo "  → venv 구성"; "$ROOT/ai/setup.sh"; }
   nohup "$ROOT/ai/serve.sh" "$MODEL" "$MODEL_PORT" >"$LOG_DIR/model.log" 2>&1 &
   echo "  → 기동 중 (모델 최초 실행 시 다운로드, log: $LOG_DIR/model.log)"
@@ -60,7 +64,7 @@ if up "http://127.0.0.1:$UI_PORT" || up "http://$LAN_IP:$UI_PORT"; then
   echo "  ✓ 이미 실행 중"
 else
   [ -d "$ROOT/apps/k3s-studio-ui/node_modules" ] || ( cd "$ROOT/apps/k3s-studio-ui" && npm install )
-  nohup bash -c "cd '$ROOT/apps/k3s-studio-ui' && BACKEND_URL=http://localhost:$API_PORT node_modules/.bin/next dev -H '$LAN_IP' -p $UI_PORT" >"$LOG_DIR/ui.log" 2>&1 &
+  nohup bash -c "cd '$ROOT/apps/k3s-studio-ui' && BACKEND_URL=http://localhost:$API_PORT node_modules/.bin/next dev -H 0.0.0.0 -p $UI_PORT" >"$LOG_DIR/ui.log" 2>&1 &
   echo "  → next dev 기동 중 (log: $LOG_DIR/ui.log)"
 fi
 
@@ -84,7 +88,7 @@ echo "  ✓ 활성 프로파일 = http://127.0.0.1:$MODEL_PORT ($MODEL)"
 
 echo ""
 echo "✅ 완료"
-echo "   UI    : http://$LAN_IP:$UI_PORT"
+echo "   UI    : http://localhost:$UI_PORT  (LAN: http://$LAN_IP:$UI_PORT)"
 echo "   API   : http://127.0.0.1:$API_PORT"
 echo "   모델  : http://127.0.0.1:$MODEL_PORT  (/v1/models)"
 echo "   중지  : $ROOT/.claude/skills/k3s-dev/stop.sh"
