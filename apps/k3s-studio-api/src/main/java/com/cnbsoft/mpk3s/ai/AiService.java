@@ -3,6 +3,7 @@ package com.cnbsoft.mpk3s.ai;
 import com.cnbsoft.mpk3s.cluster.ClusterRepository;
 import com.cnbsoft.mpk3s.cluster.ClusterRequest;
 import com.cnbsoft.mpk3s.cluster.ClusterService;
+import com.cnbsoft.mpk3s.cluster.WorkerRequest;
 import com.cnbsoft.mpk3s.k8s.K8sService;
 import com.cnbsoft.mpk3s.server.ServerRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -163,7 +164,7 @@ public class AiService {
                             }
                             break;
                         }
-                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName) || "helm_install".equals(toolName)) {
+                        if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName) || "add_worker".equals(toolName) || "helm_install".equals(toolName)) {
                             String cluster = requireString(args, "clusterName");
                             Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
                             String displayYaml = buildClusterLifecycleDisplay(toolName, args);
@@ -239,7 +240,7 @@ public class AiService {
                                 }
                                 break;
                             }
-                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName) || "helm_install".equals(toolName)) {
+                            if ("start_cluster".equals(toolName) || "stop_cluster".equals(toolName) || "create_cluster".equals(toolName) || "delete_cluster".equals(toolName) || "add_worker".equals(toolName) || "helm_install".equals(toolName)) {
                                 String cluster = requireString(args, "clusterName");
                                 Map<String, Object> extra = buildClusterLifecycleExtra(toolName, args);
                                 String displayYaml = buildClusterLifecycleDisplay(toolName, args);
@@ -389,6 +390,22 @@ public class AiService {
                 req.setUbuntuImage("22.04");
                 java.util.UUID jobId = clusterService.createCluster(req);
                 String result = "클러스터 '" + op.clusterName() + "' 생성 시작 (job: " + jobId + "). list_clusters로 상태를 확인하세요.";
+                saveManifestMessage(conversationId, op.action(), op.yaml(), result);
+                yield result;
+            }
+            case "add_worker" -> {
+                int workers = ((Number) op.extra().getOrDefault("workers", 1)).intValue();
+                int cpu = ((Number) op.extra().getOrDefault("cpu", 2)).intValue();
+                int memory = ((Number) op.extra().getOrDefault("memory", 2048)).intValue();
+                int disk = ((Number) op.extra().getOrDefault("disk", 20)).intValue();
+                WorkerRequest req = new WorkerRequest();
+                req.setWorkerCount(workers);
+                req.setWorkerSpec("custom");
+                req.setWorkerCpus(cpu);
+                req.setWorkerMemory(memory + "MB");
+                req.setWorkerDisk(disk + "G");
+                java.util.UUID jobId = clusterService.addWorkers(op.clusterName(), req);
+                String result = "클러스터 '" + op.clusterName() + "'에 워커 " + workers + "개 추가 시작 (job: " + jobId + "). list_clusters로 상태를 확인하세요.";
                 saveManifestMessage(conversationId, op.action(), op.yaml(), result);
                 yield result;
             }
@@ -773,7 +790,7 @@ public class AiService {
                         param("clusterName", "정지할 클러스터 이름")),
                 tool("delete_cluster", "k3s 클러스터 전체 삭제 — 클러스터의 모든 노드(VM)를 영구 제거 (사용자 확인 후 실행됨). 클러스터 자체를 지울 때 사용. K8s 리소스 삭제가 아님",
                         param("clusterName", "삭제할 클러스터 이름")),
-                tool("create_cluster", "새 k3s 클러스터 생성 (사용자 확인 후 실행됨, 기본값: workers=0 cpu=2 memory=2048MB disk=20GB). serverName 미지정 시 로컬 서버에 생성됨",
+                tool("create_cluster", "새 k3s 클러스터를 처음부터 생성 (사용자 확인 후 실행됨, 기본값: workers=0 cpu=2 memory=2048MB disk=20GB). serverName 미지정 시 로컬 서버에 생성됨. 주의: 이미 존재하는 클러스터에 워커 노드를 추가할 때는 이 도구가 아니라 add_worker를 사용",
                         Map.of("type", "object", "properties", Map.of(
                                 "clusterName", strProp("생성할 클러스터 이름"),
                                 "serverName", strProp("생성 대상 서버 이름 (예: local, mac-mini). 미지정 시 로컬 서버"),
@@ -782,6 +799,14 @@ public class AiService {
                                 "memory", Map.of("type", "integer", "description", "마스터 메모리 MB (기본값 2048)"),
                                 "disk", Map.of("type", "integer", "description", "마스터 디스크 GB (기본값 20)")
                         ), "required", List.of("clusterName"))),
+                tool("add_worker", "이미 존재하는 k3s 클러스터에 워커 노드 추가 (사용자 확인 후 실행됨, 기본값: cpu=2 memory=2048MB disk=20GB). 기존 클러스터의 노드 수를 늘릴 때 사용하며, 새 클러스터 생성이 아님",
+                        Map.of("type", "object", "properties", Map.of(
+                                "clusterName", strProp("워커를 추가할 기존 클러스터 이름"),
+                                "workers", Map.of("type", "integer", "description", "추가할 워커 수 (기본값 1, 최대 10)"),
+                                "cpu", Map.of("type", "integer", "description", "워커 CPU 수 (기본값 2)"),
+                                "memory", Map.of("type", "integer", "description", "워커 메모리 MB (기본값 2048)"),
+                                "disk", Map.of("type", "integer", "description", "워커 디스크 GB (기본값 20)")
+                        ), "required", List.of("clusterName", "workers"))),
                 tool("list_configmaps", "컨피그맵 목록 조회",
                         Map.of("type", "object", "properties", Map.of(
                                 "clusterName", strProp("클러스터 이름"),
@@ -854,6 +879,11 @@ public class AiService {
             extra.put("disk", args.getOrDefault("disk", 20));
             Object serverName = args.get("serverName");
             if (serverName != null) extra.put("serverName", serverName);
+        } else if ("add_worker".equals(toolName)) {
+            extra.put("workers", args.getOrDefault("workers", 1));
+            extra.put("cpu", args.getOrDefault("cpu", 2));
+            extra.put("memory", args.getOrDefault("memory", 2048));
+            extra.put("disk", args.getOrDefault("disk", 20));
         } else if ("helm_install".equals(toolName)) {
             extra.put("releaseName", args.getOrDefault("releaseName", ""));
             extra.put("chart", args.getOrDefault("chart", ""));
@@ -877,6 +907,11 @@ public class AiService {
             case "create_cluster" -> "cluster: " + name
                     + "\nserver: " + serverDisplay
                     + "\nworkers: " + args.getOrDefault("workers", 0)
+                    + "\ncpu: " + args.getOrDefault("cpu", 2)
+                    + "\nmemory: " + args.getOrDefault("memory", 2048) + "MB"
+                    + "\ndisk: " + args.getOrDefault("disk", 20) + "GB";
+            case "add_worker" -> "cluster: " + name
+                    + "\n+workers: " + args.getOrDefault("workers", 1)
                     + "\ncpu: " + args.getOrDefault("cpu", 2)
                     + "\nmemory: " + args.getOrDefault("memory", 2048) + "MB"
                     + "\ndisk: " + args.getOrDefault("disk", 20) + "GB";
