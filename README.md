@@ -20,6 +20,52 @@ Multipass 기반 K3s 클러스터를 자연어와 Web UI로 통합 관리하는 
 
 ---
 
+## Screenshots
+
+### 대시보드
+
+전체 서버/클러스터 현황을 한눈에 확인합니다.
+
+![대시보드](_docs/screenshots/dashboard.png)
+
+### 서버 관리
+
+로컬 및 원격 Multipass 서버를 등록·관리합니다.
+
+![서버 관리](_docs/screenshots/servers.png)
+
+### 클러스터 생성 마법사
+
+서버 선택 → 기본 정보 → 마스터 스펙 → 워커 노드 → 이미지/컴포넌트 → 네트워크 → 확인의 7단계로 클러스터를 자동 프로비저닝합니다.
+
+![새 클러스터 생성](_docs/screenshots/cluster-new.png)
+
+### 클러스터·노드 관리
+
+마스터/워커 노드 상태 확인, 워커 추가·삭제, 클러스터 시작/중지/재시작/일시정지, kubeconfig 다운로드·복사를 지원합니다.
+
+![클러스터 노드 관리](_docs/screenshots/cluster-detail.png)
+
+### K8s 리소스 관리
+
+Pod/Service/Deployment/StatefulSet/Ingress/Secret/ConfigMap을 조회하고, Manifest 편집기로 YAML을 직접 Apply·Delete합니다.
+
+![K8s 리소스 관리](_docs/screenshots/k8s-resources.png)
+
+### AI 관리자
+
+자연어 명령으로 서버 조회, 클러스터 생성, 매니페스트 배포 등을 수행하고 실행 결과를 스트리밍으로 확인합니다.
+
+![AI 관리자 대화](_docs/screenshots/ai-chat-conversation2.png)
+
+### AI 모델 설정
+
+Ollama, OpenAI 등 OpenAI-compatible API 프로필을 여러 개 등록하고 전환합니다.
+
+![AI 모델 설정](_docs/screenshots/ai-settings.png)
+
+---
+
 ## Project Structure
 
 ```
