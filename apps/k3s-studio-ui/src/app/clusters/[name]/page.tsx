@@ -342,7 +342,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   if (!cluster) return <p className="text-muted-foreground">{t("cluster.not_found")}</p>;
 
   return (
-    <div className={`space-y-6 ${activeTab === "k8s" ? "max-w-6xl" : activeTab === "ai" ? "max-w-4xl" : "max-w-4xl"}`}>
+    <div className="space-y-6">
       <div className="space-y-2">
         <Breadcrumb items={[{ label: t("dashboard.title"), href: "/" }, { label: cluster.name }]} />
         <div className="flex items-center gap-3">
