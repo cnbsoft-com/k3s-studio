@@ -324,7 +324,8 @@ public class MultipassService {
         if (list.isArray()) {
             for (JsonNode item : list) {
                 String type = item.path("type").asText("");
-                if (!"physical".equals(type) && !"bridge".equals(type)) continue;
+                if (!"physical".equals(type) && !"bridge".equals(type)
+                        && !"ethernet".equals(type) && !"wifi".equals(type)) continue;
 
                 String name = item.path("name").asText();
                 String cidr = resolveCidr(name, os);
