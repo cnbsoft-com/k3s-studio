@@ -31,6 +31,7 @@ const schema = z.object({
   options: z.record(z.boolean()),
   networkInterface: z.string().optional(),
   networkInterfaceCidr: z.string().optional(),
+  sshPublicKey: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -84,6 +85,7 @@ function NewClusterForm() {
       options: Object.fromEntries(K3S_COMPONENTS.map((c) => [c.key, true])),
       networkInterface: "",
       networkInterfaceCidr: "",
+      sshPublicKey: "",
     },
   });
 
@@ -111,6 +113,7 @@ function NewClusterForm() {
       ...data,
       networkInterface: data.networkInterface || undefined,
       networkInterfaceCidr: data.networkInterfaceCidr || undefined,
+      sshPublicKey: data.sshPublicKey || undefined,
     };
     mutation.mutate(payload);
   };
@@ -378,6 +381,18 @@ function NewClusterForm() {
             {networks.length === 0 && (
               <p className="text-xs text-muted-foreground">네트워크 인터페이스를 불러오는 중이거나 사용 가능한 인터페이스가 없습니다.</p>
             )}
+            <div className="pt-2">
+              <label className="block text-sm font-medium mb-1">SSH 공개키 (선택)</label>
+              <p className="text-xs text-muted-foreground mb-2">
+                입력하면 multipass shell/exec와 무관하게 노드에 <code>ssh ubuntu@&lt;node-ip&gt;</code>로 직접 접속할 수 있습니다.
+              </p>
+              <textarea
+                {...form.register("sshPublicKey")}
+                rows={3}
+                className="w-full rounded-md border px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring bg-background"
+                placeholder="ssh-ed25519 AAAA... user@host"
+              />
+            </div>
           </div>
         )}
 
@@ -397,6 +412,7 @@ function NewClusterForm() {
               value={values.networkInterface
                 ? `${values.networkInterface}${selectedNetwork?.cidr ? ` (${selectedNetwork.cidr})` : ""}`
                 : "브리지 없음"} />
+            <Row label="SSH 공개키" value={values.sshPublicKey ? "설정됨" : "미설정"} />
           </div>
         )}
 

@@ -61,6 +61,7 @@ export interface ClusterResponse {
   workerCount: number;
   ubuntuImage: string;
   options: Record<string, boolean>;
+  hasSshKey: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,6 +104,7 @@ export interface CreateClusterRequest {
   options: Record<string, boolean>;
   networkInterface?: string;
   networkInterfaceCidr?: string;
+  sshPublicKey?: string;
 }
 
 export interface NetworkInterfaceInfo {

@@ -108,6 +108,7 @@ public class ClusterService {
         cluster.setOptions(req.getOptions());
         cluster.setNetworkInterface(req.getNetworkInterface());
         cluster.setNetworkInterfaceCidr(req.getNetworkInterfaceCidr());
+        cluster.setSshPublicKey(req.getSshPublicKey());
         clusterRepository.save(cluster);
 
         Job job = jobService.createJob(req.getName(), JobType.CREATE_CLUSTER);
@@ -125,7 +126,7 @@ public class ClusterService {
 
             jobService.appendLog(jobId, "마스터 노드 생성 중: " + req.getName() + "-master");
             svc.launchMaster(req.getName(), masterSpec[0], masterSpec[1], masterSpec[2],
-                    req.getUbuntuImage(), req.getOptions(), req.getNetworkInterface(),
+                    req.getUbuntuImage(), req.getOptions(), req.getNetworkInterface(), req.getSshPublicKey(),
                     line -> jobService.appendLog(jobId, line));
 
             String masterIp;
@@ -154,7 +155,7 @@ public class ClusterService {
                 jobService.appendLog(jobId, "워커 노드 생성 중: " + req.getName() + "-worker" + i);
                 svc.launchWorker(req.getName(), i,
                         workerSpec[0], workerSpec[1], workerSpec[2],
-                        req.getUbuntuImage(), masterIp, nodeToken, req.getNetworkInterface(),
+                        req.getUbuntuImage(), masterIp, nodeToken, req.getNetworkInterface(), req.getSshPublicKey(),
                         line -> jobService.appendLog(jobId, line));
             }
 
@@ -211,14 +212,14 @@ public class ClusterService {
         Job job = jobService.createJob(clusterName, JobType.ADD_WORKER);
         self.getObject().doAddWorkers(job.getId(), clusterName, cluster.getWorkerCount(),
                 cluster.getUbuntuImage(), req, cluster.getServerId(),
-                cluster.getNetworkInterface(), cluster.getNetworkInterfaceCidr());
+                cluster.getNetworkInterface(), cluster.getNetworkInterfaceCidr(), cluster.getSshPublicKey());
         return job.getId();
     }
 
     @Async("clusterTaskExecutor")
     public void doAddWorkers(UUID jobId, String clusterName, int currentWorkerCount,
                               String image, WorkerRequest req, Long serverId,
-                              String networkInterface, String networkInterfaceCidr) {
+                              String networkInterface, String networkInterfaceCidr, String sshPublicKey) {
         jobService.start(jobId);
         MultipassService svc = serviceForServerId(serverId);
         try {
@@ -231,7 +232,7 @@ public class ClusterService {
                 int idx = currentWorkerCount + i;
                 jobService.appendLog(jobId, "워커 노드 생성 중: " + clusterName + "-worker" + idx);
                 svc.launchWorker(clusterName, idx,
-                        spec[0], spec[1], spec[2], image, masterIp, nodeToken, networkInterface,
+                        spec[0], spec[1], spec[2], image, masterIp, nodeToken, networkInterface, sshPublicKey,
                         line -> jobService.appendLog(jobId, line));
             }
 

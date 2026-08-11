@@ -395,6 +395,11 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
               </button>
             </div>
           </div>
+          {cluster.hasSshKey && (
+            <p className="text-xs text-muted-foreground">
+              등록된 SSH 키로 각 노드에 <code>ssh ubuntu@&lt;node-ip&gt;</code>로 직접 접속할 수 있습니다.
+            </p>
+          )}
           {nodesLoading ? (
             <div className="animate-pulse h-24 bg-muted rounded-lg" />
           ) : (

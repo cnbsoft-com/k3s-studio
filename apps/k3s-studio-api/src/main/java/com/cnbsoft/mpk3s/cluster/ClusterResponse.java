@@ -20,6 +20,7 @@ public class ClusterResponse {
     private Integer workerCount;
     private String ubuntuImage;
     private Map<String, Boolean> options;
+    private boolean hasSshKey;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
@@ -36,6 +37,7 @@ public class ClusterResponse {
         res.setWorkerCount(cluster.getWorkerCount());
         res.setUbuntuImage(cluster.getUbuntuImage());
         res.setOptions(cluster.getOptions());
+        res.setHasSshKey(cluster.getSshPublicKey() != null && !cluster.getSshPublicKey().isBlank());
         res.setCreatedAt(cluster.getCreatedAt());
         res.setUpdatedAt(cluster.getUpdatedAt());
         return res;

@@ -40,4 +40,7 @@ public class ClusterRequest {
     // 브리지 네트워크 (선택 사항) — null이면 기존 DHCP 동작
     private String networkInterface;
     private String networkInterfaceCidr;
+
+    // 원격 접속용 SSH 공개키 (선택 사항)
+    private String sshPublicKey;
 }
