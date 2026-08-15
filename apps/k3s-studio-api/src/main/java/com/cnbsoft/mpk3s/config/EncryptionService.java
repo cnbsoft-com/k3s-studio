@@ -15,12 +15,20 @@ public class EncryptionService {
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int IV_LENGTH = 12;
     private static final int TAG_LENGTH = 128;
+    private static final String INSECURE_DEFAULT_KEY =
+            "0000000000000000000000000000000000000000000000000000000000000000";
 
     private final byte[] key;
 
-    public EncryptionService(@Value("${encryption.key}") String hexKey) {
+    public EncryptionService(@Value("${encryption.key}") String hexKey,
+                              @Value("${encryption.require-strong-key:false}") boolean requireStrongKey) {
         if (hexKey.length() != 64) {
             throw new IllegalArgumentException("encryption.key must be 64 hex characters (32 bytes)");
+        }
+        if (requireStrongKey && INSECURE_DEFAULT_KEY.equals(hexKey)) {
+            throw new IllegalStateException(
+                    "encryption.key is set to the insecure default. " +
+                    "Generate one with `openssl rand -hex 32` and set it via the ENCRYPTION_KEY environment variable.");
         }
         this.key = hexToBytes(hexKey);
     }

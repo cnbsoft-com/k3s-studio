@@ -24,3 +24,8 @@ multipass:
 
 encryption:
   key: ${ENCRYPTION_KEY:0000000000000000000000000000000000000000000000000000000000000000}
+  require-strong-key: ${REQUIRE_STRONG_ENCRYPTION_KEY:false}
+
+k3s-studio:
+  local-server:
+    enabled: ${K3S_STUDIO_LOCAL_SERVER_ENABLED:true}

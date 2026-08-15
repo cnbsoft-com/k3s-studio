@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: mpk3s
+      POSTGRES_USER: mpk3s
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD를 .env에 설정하세요}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpk3s -d mpk3s"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/k3s-studio-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/mpk3s
+      DB_USERNAME: mpk3s
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD를 .env에 설정하세요}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?openssl rand -hex 32 로 생성 후 .env에 설정하세요}
+      REQUIRE_STRONG_ENCRYPTION_KEY: "true"
+      K3S_STUDIO_LOCAL_SERVER_ENABLED: "false"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+    ports:
+      - "9090:9090"
+
+  ui:
+    build:
+      context: ./apps/k3s-studio-ui
+    depends_on:
+      - api
+    environment:
+      BACKEND_URL: http://api:9090
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

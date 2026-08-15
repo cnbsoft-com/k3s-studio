@@ -12,6 +12,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -35,10 +36,17 @@ public class ServerService {
     /** 같은 빈 내 @Async 메서드를 프록시 경유로 호출 (self-invocation 시 @Async 우회 방지) */
     private final ObjectProvider<ServerService> self;
 
+    @Value("${k3s-studio.local-server.enabled:true}")
+    private boolean localServerEnabled;
+
     /** 앱 시작 시 localhost 서버가 없으면 자동 생성. 최초 생성 시 기존 클러스터 자동 감지 */
     @PostConstruct
     @Transactional
     public void initLocalServer() {
+        if (!localServerEnabled) {
+            log.info("K3S_STUDIO_LOCAL_SERVER_ENABLED=false — 로컬 서버 자동 생성 건너뜀");
+            return;
+        }
         boolean existed = serverRepository.findByLocal(true).isPresent();
         if (!existed) {
             Server local = new Server();

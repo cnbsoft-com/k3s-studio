@@ -117,6 +117,43 @@ npm run dev
 
 ---
 
+## Docker로 실행하기
+
+DB + API + UI를 컨테이너로 한 번에 띄웁니다. **이 모드는 원격 SSH Multipass 서버만 관리할 수 있습니다** — API 컨테이너 자체에는 Multipass가 없으므로, 로컬 Multipass를 직접 제어하려면 위 [Quick Start](#quick-start)의 네이티브 실행을 사용하세요.
+
+### 전제 조건
+
+- Docker + Docker Compose
+- 관리할 Multipass가 설치된 원격 서버(SSH 접속 가능)
+
+### 실행
+
+```bash
+cp .env.example .env
+# .env에서 DB_PASSWORD 설정, ENCRYPTION_KEY는 아래로 생성
+openssl rand -hex 32   # → ENCRYPTION_KEY에 붙여넣기
+
+docker compose up -d --build
+```
+
+- UI: http://localhost:3000
+- API: http://localhost:9090
+
+첫 접속 후 **서버 관리**에서 원격 서버를 SSH로 등록해야 클러스터를 생성할 수 있습니다(로컬 서버는 자동 등록되지 않음).
+
+### 미리 빌드된 이미지
+
+릴리스 태그(`v*`)가 푸시되면 GitHub Actions가 GHCR에 이미지를 퍼블리시합니다:
+
+```
+ghcr.io/cnbsoft-com/k3s-studio-api:latest
+ghcr.io/cnbsoft-com/k3s-studio-ui:latest
+```
+
+`docker-compose.yml`의 `build:` 항목을 `image: ghcr.io/cnbsoft-com/k3s-studio-<api|ui>:latest`로 바꾸면 직접 빌드 없이 바로 사용할 수 있습니다.
+
+---
+
 ## AI 관리자
 
 Web UI 사이드바의 **AI 관리** 메뉴에서 자연어로 k3s-studio를 제어합니다.

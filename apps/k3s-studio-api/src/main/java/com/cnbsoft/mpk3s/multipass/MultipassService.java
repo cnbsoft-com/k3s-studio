@@ -79,9 +79,10 @@ public class MultipassService {
     public void launchMaster(String clusterName, String cpus, String memory, String disk,
                              String image, Map<String, Boolean> options,
                              @Nullable String networkInterface,
+                             @Nullable String sshPublicKey,
                              Consumer<String> logConsumer) throws IOException, InterruptedException {
         String remotePath = "/tmp/master-cloud-init-" + UUID.randomUUID() + ".yaml";
-        executor.uploadFile(remotePath, buildMasterCloudInit(clusterName, options));
+        executor.uploadFile(remotePath, buildMasterCloudInit(clusterName, options, sshPublicKey));
         try {
             List<String> args = new ArrayList<>(Arrays.asList(
                     "launch",
@@ -114,9 +115,10 @@ public class MultipassService {
                              String cpus, String memory, String disk, String image,
                              String masterIp, String nodeToken,
                              @Nullable String networkInterface,
+                             @Nullable String sshPublicKey,
                              Consumer<String> logConsumer) throws IOException, InterruptedException {
         String remotePath = "/tmp/worker-cloud-init-" + UUID.randomUUID() + ".yaml";
-        executor.uploadFile(remotePath, buildWorkerCloudInit(masterIp, nodeToken));
+        executor.uploadFile(remotePath, buildWorkerCloudInit(masterIp, nodeToken, sshPublicKey));
         try {
             List<String> args = new ArrayList<>(Arrays.asList(
                     "launch",
@@ -324,7 +326,7 @@ public class MultipassService {
         if (list.isArray()) {
             for (JsonNode item : list) {
                 String type = item.path("type").asText("");
-                if (!"physical".equals(type) && !"bridge".equals(type)) continue;
+                if (!"ethernet".equals(type)) continue;
 
                 String name = item.path("name").asText();
                 String cidr = resolveCidr(name, os);
@@ -510,7 +512,7 @@ public class MultipassService {
                 (network >> 8) & 0xFF, network & 0xFF);
     }
 
-    private String buildMasterCloudInit(String clusterName, Map<String, Boolean> options) {
+    private String buildMasterCloudInit(String clusterName, Map<String, Boolean> options, String sshPublicKey) {
         StringBuilder exec = new StringBuilder(
                 "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC=\"--cluster-init");
         if (options != null) {
@@ -522,12 +524,22 @@ public class MultipassService {
         }
         exec.append("\" sh -");
 
-        return "#cloud-config\nruncmd:\n  - " + exec + "\n";
+        return "#cloud-config\n" + sshAuthorizedKeysBlock(sshPublicKey) + "runcmd:\n  - " + exec + "\n";
     }
 
-    private String buildWorkerCloudInit(String masterIp, String nodeToken) {
-        return "#cloud-config\nruncmd:\n  - curl -sfL https://get.k3s.io | "
+    private String buildWorkerCloudInit(String masterIp, String nodeToken, String sshPublicKey) {
+        return "#cloud-config\n" + sshAuthorizedKeysBlock(sshPublicKey) + "runcmd:\n  - curl -sfL https://get.k3s.io | "
                 + "K3S_URL=https://" + masterIp + ":6443 K3S_TOKEN=" + nodeToken + " sh -\n";
+    }
+
+    /** multipass 자체 SSH 키와 별개로, 지정된 공개키로 직접 ssh 접속을 허용하는 cloud-init 블록. */
+    private String sshAuthorizedKeysBlock(String sshPublicKey) {
+        if (sshPublicKey == null) return "";
+        String key = sshPublicKey.strip();
+        if (key.isEmpty()) return "";
+        key = key.lines().findFirst().orElse("").strip();
+        if (key.isEmpty()) return "";
+        return "ssh_authorized_keys:\n  - " + key + "\n";
     }
 
     private List<MultipassNode> parseNodeList(String json) throws IOException {

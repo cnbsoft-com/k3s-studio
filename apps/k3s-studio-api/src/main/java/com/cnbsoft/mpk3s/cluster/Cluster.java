@@ -51,6 +51,11 @@ public class Cluster {
     @Column(nullable = true)
     private String networkInterfaceCidr;
 
+    // 원격 접속용 SSH 공개키 (선택 사항) — 설정 시 노드에 ssh_authorized_keys로 주입되어
+    // multipass shell/exec와 무관하게 ssh ubuntu@<node-ip>로 직접 접속 가능
+    @Column(columnDefinition = "TEXT")
+    private String sshPublicKey;
+
     @Column(updatable = false)
     private OffsetDateTime createdAt;
 
