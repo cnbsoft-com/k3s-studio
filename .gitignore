@@ -61,6 +61,7 @@ __pycache__/
 *.pyc
 
 # Local env
+.env
 .env.local
 .claude/*
 !.claude/skills/

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate ephemeral secrets
+        run: |
+          echo "DB_PASSWORD=ci-$(openssl rand -hex 8)" >> .env
+          echo "ENCRYPTION_KEY=$(openssl rand -hex 32)" >> .env
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start stack
+        run: docker compose up -d
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9090/actuator/health && exit 0
+            sleep 2
+          done
+          echo "API did not become healthy" >&2
+          exit 1
+
+      - name: Wait for UI
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000 && exit 0
+            sleep 2
+          done
+          echo "UI did not become healthy" >&2
+          exit 1
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

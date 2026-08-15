@@ -39,6 +39,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
   const { t } = useTranslation();
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [pendingNodes, setPendingNodes] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"nodes" | "k8s" | "ai">("nodes");
   const [aiModel, setAiModel] = useState("qwen2.5-coder:3b");
@@ -78,7 +79,7 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteCluster(name),
-    onSuccess: (res) => { setShowDeleteDialog(false); setActiveJobId(res.jobId); },
+    onSuccess: (res) => { setShowDeleteDialog(false); setActiveJobId(res.jobId); setDeleting(true); },
     onError: () => toast.error(t("cluster.delete_started")),
   });
 
@@ -334,8 +335,10 @@ export default function ClusterDetailPage({ params }: { params: Promise<{ name: 
     queryClient.invalidateQueries({ queryKey: ["clusters"] });
     queryClient.invalidateQueries({ queryKey: ["cluster", name] });
     queryClient.invalidateQueries({ queryKey: ["nodes", name] });
-    if (!success) return;
-    if (!cluster || cluster.status === "DELETING") router.push("/");
+    if (deleting) {
+      setDeleting(false);
+      if (success) { router.push("/"); return; }
+    }
   };
 
   if (clusterLoading) return <div className="animate-pulse h-32 bg-muted rounded-lg" />;

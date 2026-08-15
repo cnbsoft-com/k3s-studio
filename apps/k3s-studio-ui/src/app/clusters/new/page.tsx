@@ -49,11 +49,11 @@ function NewClusterForm() {
   ];
 
   const K3S_COMPONENTS = [
-    { key: "traefik",       label: t("cluster.component.traefik") },
-    { key: "flannel",       label: t("cluster.component.flannel") },
-    { key: "servicelb",     label: t("cluster.component.servicelb") },
-    { key: "localStorage",  label: t("cluster.component.localStorage") },
-    { key: "metricsServer", label: t("cluster.component.metricsServer") },
+    { key: "traefik",       label: t("cluster.component.traefik"),       desc: t("cluster.component.traefik.desc") },
+    { key: "flannel",       label: t("cluster.component.flannel"),       desc: t("cluster.component.flannel.desc") },
+    { key: "servicelb",     label: t("cluster.component.servicelb"),     desc: t("cluster.component.servicelb.desc") },
+    { key: "localStorage",  label: t("cluster.component.localStorage"), desc: t("cluster.component.localStorage.desc") },
+    { key: "metricsServer", label: t("cluster.component.metricsServer"), desc: t("cluster.component.metricsServer.desc") },
   ];
 
   const STEPS = [
@@ -336,14 +336,17 @@ function NewClusterForm() {
             <div>
               <label className="block text-sm font-medium mb-2">{t("cluster.k3s_components")}</label>
               <div className="space-y-2">
-                {K3S_COMPONENTS.map(({ key, label }) => (
-                  <label key={key} className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer">
+                {K3S_COMPONENTS.map(({ key, label, desc }) => (
+                  <label key={key} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
                     <input type="checkbox"
                       checked={values.options?.[key] ?? true}
                       onChange={(e) => form.setValue(`options.${key}`, e.target.checked)}
-                      className="accent-primary h-4 w-4"
+                      className="accent-primary h-4 w-4 mt-0.5"
                     />
-                    <span className="text-sm">{label}</span>
+                    <div>
+                      <span className="text-sm">{label}</span>
+                      <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                    </div>
                   </label>
                 ))}
               </div>
