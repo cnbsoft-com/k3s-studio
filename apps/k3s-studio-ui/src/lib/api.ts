@@ -347,8 +347,10 @@ export const getJob = (jobId: string) =>
   api.get<JobResponse>(`/jobs/${jobId}`).then((r) => r.data);
 
 // Images
-export const getImages = () =>
-  api.get<string[]>("/images").then((r) => r.data);
+export const getServerImages = (serverId: number | null): Promise<string[]> => {
+  const path = serverId != null ? `/servers/${serverId}/images` : `/servers/local/images`;
+  return api.get<string[]>(path).then((r) => r.data).catch(() => []);
+};
 
 // i18n
 export const getMessages = (lang: string) =>

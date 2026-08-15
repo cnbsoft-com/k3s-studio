@@ -76,4 +76,14 @@ public class ServerController {
     public List<NetworkInterfaceInfo> getLocalNetworks() {
         return clusterService.getServerNetworks(null);
     }
+
+    @GetMapping("/{id}/images")
+    public List<String> getImages(@PathVariable Long id) {
+        return clusterService.getServerImages(id);
+    }
+
+    @GetMapping("/local/images")
+    public List<String> getLocalImages() {
+        return clusterService.getServerImages(null);
+    }
 }
