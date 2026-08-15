@@ -89,6 +89,15 @@ public class ClusterService {
         }
     }
 
+    public List<String> getServerImages(Long serverId) {
+        try {
+            return serviceForServerId(serverId).listImages();
+        } catch (Exception e) {
+            log.warn("Multipass 이미지 목록 조회 실패 (serverId={}): {}", serverId, e.getMessage());
+            return List.of();
+        }
+    }
+
     @Transactional
     public UUID createCluster(ClusterRequest req) {
         if (clusterRepository.existsByName(req.getName())) {

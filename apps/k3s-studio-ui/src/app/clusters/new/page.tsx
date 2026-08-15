@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createCluster, getImages, getServers, getServerNetworks, CreateClusterRequest, NetworkInterfaceInfo } from "@/lib/api";
+import { createCluster, getServerImages, getServers, getServerNetworks, CreateClusterRequest, NetworkInterfaceInfo } from "@/lib/api";
 import { JobLogViewer } from "@/components/job-log-viewer";
 import { ServerStatusBadge } from "@/components/server-status-badge";
 import { Breadcrumb } from "@/components/breadcrumb";
@@ -70,8 +70,8 @@ function NewClusterForm() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [networks, setNetworks] = useState<NetworkInterfaceInfo[]>([]);
 
-  const { data: images = [] } = useQuery({ queryKey: ["images"], queryFn: getImages });
   const { data: servers = [] } = useQuery({ queryKey: ["servers"], queryFn: getServers });
+  const [images, setImages] = useState<string[]>([]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -102,10 +102,11 @@ function NewClusterForm() {
   const selectedServer = servers.find((s) => s.id === values.serverId);
   const selectedNetwork = networks.find((n) => n.name === values.networkInterface);
 
-  // 서버 선택 변경 시 네트워크 목록 프리로드
+  // 서버 선택 변경 시 네트워크/이미지 목록 프리로드
   useEffect(() => {
     const serverId = values.serverId ?? null;
     getServerNetworks(serverId).then(setNetworks).catch(() => setNetworks([]));
+    getServerImages(serverId).then(setImages).catch(() => setImages([]));
   }, [values.serverId]);
 
   const onSubmit = (data: FormData) => {

@@ -111,9 +111,19 @@ public class SshMultipassExecutor implements MultipassExecutor {
         }
     }
 
+    private static final Set<String> PUBLIC_KEY_PREFIXES = Set.of(
+            "ssh-rsa ", "ssh-ed25519 ", "ssh-dss ", "ecdsa-sha2-");
+
     private Path writeTempKey() throws IOException {
         if (privateKeyPem == null) {
             throw new IOException("SSH private key not configured");
+        }
+        String trimmed = privateKeyPem.strip();
+        if (PUBLIC_KEY_PREFIXES.stream().anyMatch(trimmed::startsWith)) {
+            throw new IOException("개인키가 아니라 공개키가 입력되었습니다. id_rsa 등 개인키 파일 내용을 입력하세요.");
+        }
+        if (!trimmed.startsWith("-----BEGIN")) {
+            throw new IOException("SSH 개인키 형식을 인식할 수 없습니다. -----BEGIN ... PRIVATE KEY----- 형식인지 확인하세요.");
         }
         Path tmpKey = Files.createTempFile("mpk3s-key-", null);
         Files.writeString(tmpKey, privateKeyPem);
