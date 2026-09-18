@@ -1,0 +1,41 @@
+# k3s-studio CI — registry.cnbsoft.com(GitLab 내장 Container Registry)로 api/ui 이미지
+# 빌드/푸시만 한다. 배포(cnb-infra 스웜 등)는 인프라 구성 후 별도로 추가한다.
+#
+# cnb-investment CI에서 확인된 함정 그대로 반영:
+# - 러너(docker-runner-colima)가 호스트의 /root/.docker/config.json을 파일 단위로 bind-mount
+#   해서, docker login이 자격증명 저장 시 하는 원자적 rename이 "device or resource busy"로
+#   실패한다. 잡 전용 DOCKER_CONFIG 디렉터리로 회피.
+# - CI_COMMIT_SHORT_SHA는 이 GitLab에서 8자리다.
+
+stages:
+  - build
+
+variables:
+  API_IMAGE: $CI_REGISTRY_IMAGE/api
+  UI_IMAGE: $CI_REGISTRY_IMAGE/ui
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_CONFIG: "$CI_PROJECT_DIR/.docker"
+
+build-api:
+  stage: build
+  image: docker:27
+  services: ["docker:27-dind"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build -t "$API_IMAGE:$CI_COMMIT_SHORT_SHA" -t "$API_IMAGE:latest" apps/k3s-studio-api
+    - docker push "$API_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker push "$API_IMAGE:latest"
+
+build-ui:
+  stage: build
+  image: docker:27
+  services: ["docker:27-dind"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build -t "$UI_IMAGE:$CI_COMMIT_SHORT_SHA" -t "$UI_IMAGE:latest" apps/k3s-studio-ui
+    - docker push "$UI_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker push "$UI_IMAGE:latest"
