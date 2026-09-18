@@ -31,6 +31,9 @@ export default function RootLayout({
                 <div className="ml-auto flex items-center gap-1">
                   <LangToggle />
                   <ThemeToggle />
+                  <a href="/auth/logout" className="px-2 text-xs text-white/70 hover:text-white">
+                    로그아웃
+                  </a>
                 </div>
               </div>
             </header>

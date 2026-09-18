@@ -27,6 +27,7 @@ services:
       REQUIRE_STRONG_ENCRYPTION_KEY: "true"
       K3S_STUDIO_LOCAL_SERVER_ENABLED: "false"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:?Keycloak realm issuer를 .env에 설정하세요}
     ports:
       - "9090:9090"
 
@@ -37,6 +38,9 @@ services:
       - api
     environment:
       BACKEND_URL: http://api:9090
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:?Keycloak realm issuer를 .env에 설정하세요}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-k3s-studio-web}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
 
