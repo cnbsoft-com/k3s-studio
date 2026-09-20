@@ -12,9 +12,31 @@ MODEL_PORT="${K3S_AI_PORT:-8000}"
 API_PORT=9090
 UI_PORT=3000
 PG_CONTAINER=mpk3s-postgres
-LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1)"
+LAN_IF="en0"; LAN_IP="$(ipconfig getifaddr en0 2>/dev/null)"
+[ -z "$LAN_IP" ] && { LAN_IF="en1"; LAN_IP="$(ipconfig getifaddr en1 2>/dev/null)"; }
+[ -z "$LAN_IP" ] && { LAN_IF=""; LAN_IP="127.0.0.1"; }
 LOG_DIR="${TMPDIR:-/tmp}/k3s-studio-dev"
 mkdir -p "$LOG_DIR"
+
+# 같은 netmask 대역만 API CORS 허용 (예: /16 netmask → 192.168.*.*, /24 → 192.168.0.*)
+CORS_ORIGINS="http://localhost:*,http://127.0.0.1:*"
+if [ -n "$LAN_IF" ]; then
+  NETMASK_HEX="$(ifconfig "$LAN_IF" 2>/dev/null | awk '/inet /{print $4}')"
+  if [ -n "$NETMASK_HEX" ]; then
+    MASK=$((NETMASK_HEX)); PREFIX=0
+    for ((i=31; i>=0; i--)); do
+      if (( (MASK >> i) & 1 )); then PREFIX=$((PREFIX+1)); else break; fi
+    done
+    IFS='.' read -r O1 O2 O3 O4 <<< "$LAN_IP"
+    case $((PREFIX/8)) in
+      1) SUBNET="$O1.*.*.*" ;;
+      2) SUBNET="$O1.$O2.*.*" ;;
+      3) SUBNET="$O1.$O2.$O3.*" ;;
+      *) SUBNET="$O1.$O2.$O3.$O4" ;;
+    esac
+    CORS_ORIGINS="$CORS_ORIGINS,http://$SUBNET:*"
+  fi
+fi
 
 up()       { curl -sf -o /dev/null --max-time 2 "$1" 2>/dev/null; }
 wait_for() { local url=$1 name=$2 tries=${3:-60} i
@@ -51,10 +73,11 @@ fi
 
 # 3) API (Spring Boot) -------------------------------------------------------
 echo "[3/5] API (:$API_PORT)"
+echo "  CORS 허용 대역: $CORS_ORIGINS"
 if up "http://127.0.0.1:$API_PORT/actuator/health"; then
   echo "  ✓ 이미 실행 중"
 else
-  nohup bash -c "cd '$ROOT/apps/k3s-studio-api' && ./gradlew bootRun" >"$LOG_DIR/api.log" 2>&1 &
+  nohup bash -c "cd '$ROOT/apps/k3s-studio-api' && CORS_ALLOWED_ORIGINS='$CORS_ORIGINS' ./gradlew bootRun" >"$LOG_DIR/api.log" 2>&1 &
   echo "  → bootRun 기동 중 (log: $LOG_DIR/api.log)"
 fi
 
